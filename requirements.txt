@@ -1,0 +1,16 @@
+# Core Data Processing
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0              # For reading Excel files
+pyproj>=3.5.0                # For UTM coordinate conversion
+
+# Database
+mysql-connector-python>=8.0.33
+python-dotenv>=1.0.0
+
+# Utilities
+pathlib>=1.0.1
+
+# Development & Testing (optional but recommended)
+pytest>=7.4.0
+black>=23.0.0                # Code formatter
