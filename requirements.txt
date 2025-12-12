@@ -8,6 +8,9 @@ pyproj>=3.5.0                # For UTM coordinate conversion
 mysql-connector-python>=8.0.33
 python-dotenv>=1.0.0
 
+# API Integration
+requests>=2.31.0
+
 # Utilities
 pathlib>=1.0.1
 
