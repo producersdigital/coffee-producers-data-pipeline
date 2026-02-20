@@ -110,16 +110,8 @@ class BaguaTransactionsCleaner:
         return self.data
     
     def _clean_single_year(self, file_path: str, year: int) -> pd.DataFrame:
-        """
-        Clean a single year's transaction file.
+        """Clean a single year's transaction file."""
         
-        Args:
-            file_path: Path to the Excel file
-            year: Year being processed (for year-specific fixes)
-            
-        Returns:
-            Cleaned DataFrame for that year
-        """
         # 1. Read Excel file
         df = self.file_handler.read_excel_simple(
             file_path=file_path,
@@ -131,7 +123,10 @@ class BaguaTransactionsCleaner:
         # 2. Lowercase all column names immediately
         df.columns = df.columns.str.lower()
         
-        # 3. Year-specific fixes (from your notebook)
+        # 3. Rename columns to standard names (DO THIS FIRST!)
+        df = self._rename_columns(df, year)
+        
+        # 4. Year-specific fixes (now we can use renamed columns!)
         if year == 2022:
             # Drop first empty row
             df = df.iloc[1:].reset_index(drop=True)
@@ -139,21 +134,19 @@ class BaguaTransactionsCleaner:
         
         elif year == 2023:
             # Fix campaign year
-            df['codigo'] = 2023
+            df['campania'] = 2023  # ← Use renamed column name!
             print(f"  Set campania to 2023")
         
         elif year == 2024:
             # Remove rows where fecha is null
-            original_len = len(df)
-            df = df[df['fecha'].notna()].copy()
-            removed = original_len - len(df)
-            if removed > 0:
-                print(f"  Removed {removed} rows with null fecha")
+            if 'fecha' in df.columns:
+                original_len = len(df)
+                df = df[df['fecha'].notna()].copy()
+                removed = original_len - len(df)
+                if removed > 0:
+                    print(f"  Removed {removed} rows with null fecha")
         
-        # 4. Rename columns to standard names
-        df = self._rename_columns(df, year)
-        
-        # 5. Drop unwanted columns (if they exist)
+        # 5. Drop unwanted columns
         cols_to_drop = [col for col in self.COLUMNS_TO_DROP if col in df.columns]
         if cols_to_drop:
             df = df.drop(columns=cols_to_drop)
@@ -180,7 +173,7 @@ class BaguaTransactionsCleaner:
         Returns:
             DataFrame with renamed columns
         """
-        # Common renames for all years (from your notebook)
+        # Common renames for all years
         rename_map = {
             'socio': 'nombre_productor',
             'programa': 'categoria',
@@ -198,9 +191,15 @@ class BaguaTransactionsCleaner:
             rename_map['cobace'] = 'base'
         elif year == 2024:
             rename_map['cobase'] = 'base'
-            # 2024 has a weird date column name
-            if '21/8/2024' in df.columns:
-                rename_map['21/8/2024'] = 'fecha'
+            
+            # Find ANY date-like column (not hardcoded!)
+            # Looks for pattern: number/number/number
+            import re
+            for col in df.columns:
+                if re.match(r'\d{1,2}/\d{1,2}/\d{4}', str(col)):
+                    rename_map[col] = 'fecha'
+                    print(f"  Found date column: '{col}' → 'fecha'")
+                    break
         
         # Apply renames (only for columns that exist)
         existing_renames = {k: v for k, v in rename_map.items() if k in df.columns}

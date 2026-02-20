@@ -34,13 +34,13 @@ def main():
     
     # Paths to yearly transaction files
     INPUT_FILES = [
-        'data/raw/BAGUA GRANDE/ACOPIO 2022.xlsm',
-        'data/raw/BAGUA GRANDE/ACOPIO 2023.xlsm',
-        'data/raw/BAGUA GRANDE/ACOPIO 2024.xlsm',
+        'data/raw/transactions/bagua/ACOPIO 2022.xlsm',
+        'data/raw/transactions/bagua/ACOPIO 2023.xlsm',
+        'data/raw/transactions/bagua/ACOPIO 2024.xlsm',
     ]
     
     # Where to save the cleaned combined data
-    OUTPUT_FILE = 'data/processed/BAGUA GRANDE/bagua_transactions_clean.pkl'
+    OUTPUT_FILE = 'data/processed/transactions/bagua/bagua_transactions_NEW.pkl'
     
     # Optional: Base path for all data (if using relative paths)
     BASE_PATH = None  # Set to your data directory if needed
