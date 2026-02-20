@@ -1,246 +1,219 @@
 """
-DNI (National ID) Cleaning Utilities
+DNI Cleaner Utility
 
-Standardizes national ID formats from different Producer Organizations.
-DNIs should be 8-digit strings with leading zeros preserved.
+Standardizes DNI (Documento Nacional de Identidad) values across all datasets.
+Handles various input formats and converts them to a consistent 8-digit string format.
+
+Author: Daniela
 """
 
 import pandas as pd
-import numpy as np
-from typing import Union, Optional
+from typing import Any, Union
 
 
-def clean_dni(dni: Union[str, int, float]) -> str:
+class DNICleaner:
     """
-    Clean and standardize a single DNI value.
+    Cleans and standardizes DNI values from various formats.
     
-    Args:
-        dni: DNI value (can be string, int, or float)
+    Handles:
+    - Floats (33657779.0 → '33657779')
+    - Strings with leading apostrophes ("'33657779" → '33657779')
+    - Numbers needing padding (1234567 → '01234567')
+    - NaN/empty values (→ '')
+    - Invalid formats
     
-    Returns:
-        str: Standardized 8-digit DNI string, or empty string if invalid
-    
-    Examples:
-        >>> clean_dni(12345678)
-        '12345678'
-        >>> clean_dni(1234567.0)
-        '01234567'
-        >>> clean_dni('  12345  ')
-        '00012345'
-        >>> clean_dni("'12345678")
-        '12345678'
-        >>> clean_dni(None)
-        ''
+    Usage:
+        cleaner = DNICleaner()
+        df['dni_clean'] = cleaner.clean(df['DNI'])
     """
-    # Handle None, NaN, or empty values
-    if pd.isna(dni) or dni == '' or dni is None:
-        return ''
     
-    try:
-        # Try converting to int first (handles both float and string floats)
-        if isinstance(dni, (int, float)):
-            dni_int = int(dni)
+    def __init__(self, verbose: bool = True):
+        """
+        Initialize the DNI cleaner.
+        
+        Args:
+            verbose: Whether to print cleaning statistics
+        """
+        self.verbose = verbose
+    
+    def clean(self, dni_series: pd.Series, column_name: str = 'dni') -> pd.Series:
+        """
+        Clean a pandas Series of DNI values.
+        
+        Args:
+            dni_series: Pandas Series containing DNI values in various formats
+            column_name: Name of the column (for logging purposes)
+            
+        Returns:
+            Pandas Series with cleaned DNI values as strings
+            
+        Example:
+            Input:  [33657779.0, "'43196560", 1234567, nan, ""]
+            Output: ['33657779', '43196560', '01234567', '', '']
+        """
+        original_count = len(dni_series)
+        cleaned = dni_series.apply(self._clean_single_dni)
+        
+        # Log statistics if verbose
+        if self.verbose:
+            valid_count = (cleaned != '').sum()
+            missing_count = original_count - valid_count
+            print(f"  ✅ Cleaned {column_name}: {valid_count:,} valid DNIs, {missing_count:,} missing")
+        
+        return cleaned
+    
+    def _clean_single_dni(self, dni: Any) -> str:
+        """
+        Clean a single DNI value.
+        
+        Logic (from notebook):
+        1. Handle NaN/empty → ''
+        2. Convert to int (handles floats like 33657779.0)
+        3. Remove leading apostrophes
+        4. Keep only digits
+        5. Pad to 8 digits with leading zeros
+        
+        Args:
+            dni: Single DNI value (can be str, int, float, or NaN)
+            
+        Returns:
+            Cleaned DNI as 8-digit string, or empty string if invalid
+        """
+        # Handle NaN and empty values
+        if pd.isna(dni) or dni == '':
+            return ''
+        
+        try:
+            # Try to convert to int first (handles floats and numeric strings)
+            dni_int = int(float(dni))
             dni_str = str(dni_int)
-        else:
-            # Handle string cases
-            dni_str = str(dni).strip()
-            
-            # Remove leading apostrophe if present (Excel formatting)
-            dni_str = dni_str.lstrip("'")
-            
-            # Remove any non-digit characters
+        except (ValueError, TypeError):
+            # If conversion fails, treat as string and clean
+            dni_str = str(dni).lstrip("'").strip()
+            # Keep only digits
             dni_str = ''.join(filter(str.isdigit, dni_str))
-            
-            # If empty after cleaning, return empty string
-            if not dni_str:
-                return ''
+        
+        # If we got an empty string after cleaning, return empty
+        if not dni_str:
+            return ''
         
         # Pad to 8 digits with leading zeros
         return dni_str.zfill(8)
+    
+    def validate(self, dni: str) -> bool:
+        """
+        Check if a DNI is valid.
         
-    except (ValueError, TypeError):
-        # If all conversion attempts fail, return empty string
-        return ''
+        Valid DNI:
+        - Exactly 8 digits
+        - All numeric characters
+        - Not empty
+        
+        Args:
+            dni: DNI string to validate
+            
+        Returns:
+            True if valid, False otherwise
+            
+        Example:
+            validate('33657779')  → True
+            validate('123')       → False (too short)
+            validate('abc12345')  → False (contains letters)
+        """
+        if not dni or not isinstance(dni, str):
+            return False
+        
+        return len(dni) == 8 and dni.isdigit()
+    
+    def get_invalid_count(self, dni_series: pd.Series) -> int:
+        """
+        Count how many invalid DNIs are in a Series.
+        
+        Useful for data quality checks.
+        
+        Args:
+            dni_series: Series of cleaned DNI values
+            
+        Returns:
+            Count of invalid DNIs (empty or non-conformant)
+        """
+        return (dni_series == '').sum() + (~dni_series.apply(self.validate)).sum()
+    
+    def find_invalid(self, df: pd.DataFrame, dni_column: str = 'dni') -> pd.DataFrame:
+        """
+        Find rows with invalid or missing DNIs.
+        
+        Args:
+            df: DataFrame to check
+            dni_column: Name of DNI column
+            
+        Returns:
+            DataFrame with rows that have invalid DNIs
+            
+        Example:
+            invalid_rows = cleaner.find_invalid(df)
+            print(f"Found {len(invalid_rows)} invalid DNIs")
+        """
+        if dni_column not in df.columns:
+            print(f"⚠️  Column '{dni_column}' not found in dataframe")
+            return pd.DataFrame()
+        
+        # Find invalid DNIs
+        invalid_mask = ~df[dni_column].apply(self.validate)
+        invalid_rows = df[invalid_mask].copy()
+        
+        if self.verbose and len(invalid_rows) > 0:
+            print(f"⚠️  Found {len(invalid_rows)} rows with invalid/missing DNIs")
+        
+        return invalid_rows
+    
+    def get_statistics(self, dni_series: pd.Series) -> dict:
+        """
+        Get statistics about DNI values in a Series.
+        
+        Args:
+            dni_series: Series of cleaned DNI values
+            
+        Returns:
+            Dictionary with statistics (total, valid, missing, invalid)
+        """
+        total = len(dni_series)
+        valid = dni_series.apply(self.validate).sum()
+        empty = (dni_series == '').sum()
+        invalid = total - valid - empty
+        
+        return {
+            'total': total,
+            'valid': valid,
+            'missing': empty,
+            'invalid': invalid,
+            'valid_pct': (valid / total * 100) if total > 0 else 0
+        }
 
 
-def clean_dni_series(dni_series: pd.Series, column_name: str = 'dni') -> pd.Series:
+# Convenience function for quick cleaning
+def clean_dni_column(df: pd.DataFrame, column_name: str, 
+                     new_column_name: str = None, verbose: bool = True) -> pd.DataFrame:
     """
-    Clean an entire pandas Series of DNI values.
+    Convenience function to clean a DNI column in a DataFrame.
     
     Args:
-        dni_series: Pandas Series containing DNI values
-        column_name: Name of the column (for logging)
-    
+        df: DataFrame containing DNI column
+        column_name: Name of the column to clean
+        new_column_name: Name for the cleaned column (if None, replaces original)
+        verbose: Whether to print cleaning statistics
+        
     Returns:
-        pd.Series: Cleaned DNI series
-    
+        DataFrame with cleaned DNI column
+        
     Example:
-        >>> df['dni'] = clean_dni_series(df['dni'])
+        df = clean_dni_column(df, 'DNI', 'dni_clean')
     """
-    original_count = len(dni_series)
+    cleaner = DNICleaner(verbose=verbose)
     
-    # Apply cleaning function to entire series
-    cleaned = dni_series.apply(clean_dni)
+    if new_column_name is None:
+        new_column_name = column_name
     
-    # Count valid DNIs (non-empty)
-    valid_count = (cleaned != '').sum()
-    missing_count = original_count - valid_count
+    df[new_column_name] = cleaner.clean(df[column_name], column_name=column_name)
     
-    print(f"  ✅ Cleaned {column_name}: {valid_count:,} valid DNIs, {missing_count:,} missing")
-    
-    return cleaned
-
-
-def validate_dni(dni: str) -> bool:
-    """
-    Validate if a DNI is properly formatted.
-    
-    Args:
-        dni: DNI string to validate
-    
-    Returns:
-        bool: True if valid (8 digits), False otherwise
-    
-    Examples:
-        >>> validate_dni('12345678')
-        True
-        >>> validate_dni('123')
-        False
-        >>> validate_dni('')
-        False
-    """
-    return len(dni) == 8 and dni.isdigit()
-
-
-def find_invalid_dnis(df: pd.DataFrame, dni_column: str = 'dni') -> pd.DataFrame:
-    """
-    Find rows with invalid or missing DNIs.
-    
-    Args:
-        df: DataFrame to check
-        dni_column: Name of DNI column
-    
-    Returns:
-        pd.DataFrame: Rows with invalid DNIs
-    
-    Example:
-        >>> invalid = find_invalid_dnis(df)
-        >>> print(f"Found {len(invalid)} invalid DNIs")
-    """
-    if dni_column not in df.columns:
-        print(f"⚠️  Column '{dni_column}' not found in dataframe")
-        return pd.DataFrame()
-    
-    # Find invalid DNIs
-    invalid_mask = ~df[dni_column].apply(validate_dni)
-    invalid_rows = df[invalid_mask].copy()
-    
-    if len(invalid_rows) > 0:
-        print(f"⚠️  Found {len(invalid_rows)} rows with invalid/missing DNIs")
-    
-    return invalid_rows
-
-
-def deduplicate_dnis(df: pd.DataFrame, dni_column: str = 'dni', 
-                     keep: str = 'first') -> pd.DataFrame:
-    """
-    Remove duplicate DNI entries.
-    
-    Args:
-        df: DataFrame to deduplicate
-        dni_column: Name of DNI column
-        keep: Which duplicate to keep ('first', 'last', or False to remove all)
-    
-    Returns:
-        pd.DataFrame: Deduplicated dataframe
-    
-    Example:
-        >>> df_clean = deduplicate_dnis(df, keep='first')
-    """
-    original_count = len(df)
-    
-    # Don't count empty DNIs as duplicates
-    df_with_dni = df[df[dni_column] != ''].copy()
-    df_without_dni = df[df[dni_column] == ''].copy()
-    
-    # Remove duplicates from records with DNI
-    df_deduped = df_with_dni.drop_duplicates(subset=[dni_column], keep=keep)
-    
-    # Recombine
-    result = pd.concat([df_deduped, df_without_dni], ignore_index=True)
-    
-    removed_count = original_count - len(result)
-    if removed_count > 0:
-        print(f"  ℹ️  Removed {removed_count} duplicate DNI entries")
-    
-    return result
-
-
-# Convenience function for complete DNI cleaning workflow
-def clean_and_validate_dnis(df: pd.DataFrame, dni_column: str = 'dni', 
-                            remove_duplicates: bool = False) -> pd.DataFrame:
-    """
-    Complete DNI cleaning workflow: clean, validate, and optionally deduplicate.
-    
-    Args:
-        df: DataFrame with DNI column
-        dni_column: Name of DNI column
-        remove_duplicates: Whether to remove duplicate DNIs
-    
-    Returns:
-        pd.DataFrame: Cleaned dataframe
-    
-    Example:
-        >>> df_clean = clean_and_validate_dnis(df, remove_duplicates=True)
-    """
-    df_clean = df.copy()
-    
-    print(f"Cleaning DNI column: {dni_column}")
-    
-    # Clean DNIs
-    df_clean[dni_column] = clean_dni_series(df_clean[dni_column], dni_column)
-    
-    # Find and report invalid DNIs
-    find_invalid_dnis(df_clean, dni_column)
-    
-    # Optionally remove duplicates
-    if remove_duplicates:
-        df_clean = deduplicate_dnis(df_clean, dni_column)
-    
-    return df_clean
-
-
-if __name__ == "__main__":
-    # Test the functions
-    print("Testing DNI Cleaner...")
-    print("\nTest cases:")
-    
-    test_cases = [
-        (12345678, '12345678'),
-        (1234567.0, '01234567'),
-        ('  12345  ', '00012345'),
-        ("'12345678", '12345678'),
-        (None, ''),
-        ('', ''),
-        ('abc123def456gh78', '12345678'),
-    ]
-    
-    for input_val, expected in test_cases:
-        result = clean_dni(input_val)
-        status = "✅" if result == expected else "❌"
-        print(f"{status} clean_dni({repr(input_val)}) = '{result}' (expected: '{expected}')")
-    
-    # Test with a sample dataframe
-    print("\nTesting with DataFrame:")
-    sample_df = pd.DataFrame({
-        'dni': [12345678, 1234567.0, '  123  ', None, 87654321],
-        'name': ['Alice', 'Bob', 'Charlie', 'David', 'Eve']
-    })
-    
-    print("\nBefore cleaning:")
-    print(sample_df)
-    
-    cleaned_df = clean_and_validate_dnis(sample_df)
-    
-    print("\nAfter cleaning:")
-    print(cleaned_df)
+    return df
