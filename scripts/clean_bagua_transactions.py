@@ -37,6 +37,7 @@ def main():
         'data/raw/transactions/bagua/ACOPIO 2022.xlsm',
         'data/raw/transactions/bagua/ACOPIO 2023.xlsm',
         'data/raw/transactions/bagua/ACOPIO 2024.xlsm',
+        'data/raw/transactions/bagua/ACOPIO 2025.xlsm',
     ]
     
     # Where to save the cleaned combined data

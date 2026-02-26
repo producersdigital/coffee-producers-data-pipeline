@@ -7,12 +7,13 @@ from different Producer Organizations.
 
 # Only import what exists!
 from .bagua_inspections_cleaner import BaguaInspectionsCleaner
+from .huadquina_inspections_cleaner import HuadquinaInspectionsCleaner
+from .chirinos_inspections_cleaner import ChirinosInspectionsCleaner
 
 __all__ = [
     'BaguaInspectionsCleaner',
-    # Add more as you build them:
-    # 'HuadquinaInspectionsCleaner',
-    # 'ChirinosInspectionsCleaner',
+    'HuadquinaInspectionsCleaner',
+    'ChirinosInspectionsCleaner',
     # 'NorandinoInspectionsCleaner',
     # 'AprocassiInspectionsCleaner'
 ]

@@ -184,22 +184,23 @@ class BaguaTransactionsCleaner:
             'rdto.': 'rendimiento'
         }
         
-        # Year-specific renames
-        if year == 2022:
+        # Smart detection for 'base' column (cobace vs cobase)
+        # Works for any year without hardcoding!
+        if 'cobace' in df.columns:
             rename_map['cobace'] = 'base'
-        elif year == 2023:
-            rename_map['cobace'] = 'base'
-        elif year == 2024:
+            print(f"  Detected 'cobace' column → 'base'")
+        elif 'cobase' in df.columns:
             rename_map['cobase'] = 'base'
-            
-            # Find ANY date-like column (not hardcoded!)
-            # Looks for pattern: number/number/number
-            import re
-            for col in df.columns:
-                if re.match(r'\d{1,2}/\d{1,2}/\d{4}', str(col)):
-                    rename_map[col] = 'fecha'
-                    print(f"  Found date column: '{col}' → 'fecha'")
-                    break
+            print(f"  Detected 'cobase' column → 'base'")
+        
+        # Smart detection for date column (any date format like '21/8/2024')
+        # Works for any year without hardcoding!
+        import re
+        for col in df.columns:
+            if re.match(r'\d{1,2}/\d{1,2}/\d{4}', str(col)):
+                rename_map[col] = 'fecha'
+                print(f"  Found date column: '{col}' → 'fecha'")
+                break
         
         # Apply renames (only for columns that exist)
         existing_renames = {k: v for k, v in rename_map.items() if k in df.columns}
