@@ -223,21 +223,27 @@ class BaguaTransactionsCleaner:
         """
         print("\nApplying final cleaning...")
         
-        # 1. Clean DNI if it exists
+        # 1. Drop unnamed columns (empty columns from Excel)
+        unnamed_cols = [col for col in df.columns if col.startswith('unnamed')]
+        if unnamed_cols:
+            df = df.drop(columns=unnamed_cols)
+            print(f"  Dropped {len(unnamed_cols)} unnamed (empty) columns")
+        
+        # 2. Clean DNI if it exists
         if 'dni' in df.columns:
             df['dni'] = self.dni_cleaner.clean(df['dni'], column_name='dni')
         else:
             print("  ℹ️  No DNI column found in transaction data")
         
-        # 2. Clean all column names (standardize format)
+        # 3. Clean all column names (standardize format)
         df = self.col_cleaner.clean(df)
         
-        # 3. Convert campania to string (from your notebook)
+        # 4. Convert campania to string (from your notebook)
         if 'campania' in df.columns:
             df['campania'] = df['campania'].astype(str)
             print("  Converted campania to string")
         
-        # 4. Parse dates if fecha exists
+        # 5. Parse dates if fecha exists
         if 'fecha' in df.columns:
             df['fecha'] = pd.to_datetime(df['fecha'], errors='coerce')
             null_dates = df['fecha'].isna().sum()

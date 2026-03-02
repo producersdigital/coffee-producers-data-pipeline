@@ -12,13 +12,11 @@ Transaction data is typically simpler than inspection data:
 
 from .bagua_transactions_cleaner import BaguaTransactionsCleaner, clean_bagua_transactions
 from .huadquina_transactions_cleaner import HuadquinaTransactionsCleaner
-
+from .chirinos_transactions_cleaner import ChirinosTransactionsCleaner 
 __all__ = [
     'BaguaTransactionsCleaner',
     'clean_bagua_transactions',
-    'HuadquinaTransactionsCleaner'
+    'HuadquinaTransactionsCleaner',
     # Future cleaners will be added here:
-    # 'HuadquinaTransactionsCleaner',
-    # 'ChirinosTransactionsCleaner',
-    # etc.
+    'ChirinosTransactionsCleaner'
 ]
