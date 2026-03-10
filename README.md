@@ -42,7 +42,6 @@ This project builds a **production-grade data pipeline** that:
 | **Historical Data** | 3-5 years per organization |
 | **Database Tables** | 15+ normalized tables with foreign keys |
 | **Code Quality** | Production-ready Python modules replacing ad-hoc notebooks |
-| **Certifications Tracked** | Organic, Fair Trade, Rainforest Alliance, UTZ, EUDR |
 | **Geographic Coverage** | 5 regions across Peru |
 
 
@@ -291,15 +290,5 @@ We are actively seeking partnerships with universities and research institutions
 📧 Email: [sam@producersdirect.org]
 🌐 Website: [(https://producersdirect.org/)]  
 💻 GitHub: [https://github.com/producersdigital/coffee-producers-data-pipeline]
-
-**For Academic Partnerships**: Please include "University Collaboration" in subject line  
-**For Donor Inquiries**: Please include "Funding Opportunity" in subject line
-
----
-
-## 📜 License
-
-**Code**: MIT License (open source - see LICENSE file)  
-**Data**: Not included in repository due to privacy protections
 
 ---
