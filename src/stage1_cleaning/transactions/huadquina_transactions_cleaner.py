@@ -95,11 +95,12 @@ class HuadquinaTransactionsCleaner:
         else:
             print(f"  ⚠️  No DNI column found")
         
-        # 3. Rename columns
+        # 3. Rename columns 
         df = df.rename(columns=self.COLUMN_RENAMES)
         renamed_count = len([k for k in self.COLUMN_RENAMES.keys() if k in df.columns])
         if renamed_count > 0:
             print(f"  Renamed {renamed_count} columns")
+
         
         # 4. Add metadata
         df['org_code'] = 'HU'

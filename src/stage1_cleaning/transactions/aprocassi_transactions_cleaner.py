@@ -153,16 +153,9 @@ class AprocassiTransactionsCleaner:
         # 4. Rename columns to standard names
         df = self._rename_to_standard(df)
         
-        # 5. Normalize column names (remove spaces, periods, special characters)
-        # This matches the notebook's clean_column_names() function
-        df.columns = (df.columns
-                     .str.replace(' ', '_', regex=False)
-                     .str.replace('.', '', regex=False)
-                     .str.replace('º', '', regex=False)
-                     .str.replace('ñ', 'n', regex=False)
-                     .str.replace('(', '', regex=False)
-                     .str.replace(')', '', regex=False))
-        print(f"  Normalized column names (spaces→underscores, removed special chars)")
+        # 5. Normalize column names
+        df = self.col_cleaner.clean(df)
+        print(f"  Normalized column names")
         
         # 6. Clean DNI if it exists
         if 'dni' in df.columns:

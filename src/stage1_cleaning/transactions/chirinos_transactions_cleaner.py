@@ -250,15 +250,19 @@ class ChirinosTransactionsCleaner:
         
         # 4. Rename columns to standard names
         df = self._rename_to_standard(df)
+
+        # 5. Normalize column names
+        df = self.col_cleaner.clean(df)
+        print(f"  Normalized column names")
         
-        # 5. Clean DNI if it exists
+        # 6. Clean DNI if it exists
         if 'dni' in df.columns:
             df['dni'] = self.dni_cleaner.clean(df['dni'], column_name='dni')
         
-        # 6. Convert data types
+        # 7. Convert data types
         df = self._convert_data_types(df)
         
-        # 7. Drop any unnamed columns
+        # 8. Drop any unnamed columns
         unnamed_cols = [col for col in df.columns if col.startswith('unnamed')]
         if unnamed_cols:
             df = df.drop(columns=unnamed_cols)
