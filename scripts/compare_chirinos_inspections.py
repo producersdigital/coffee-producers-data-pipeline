@@ -69,9 +69,9 @@ def main():
     print(f"\nShape: {df_cleaner.shape}")
     print(f"Columns: {len(df_cleaner.columns)}")
     
-    if 'inspeccion_year' in df_cleaner.columns:
+    if 'año_inspeccion' in df_cleaner.columns:
         print(f"\nInspections by year:")
-        for year, count in df_cleaner['inspeccion_year'].value_counts().sort_index().items():
+        for year, count in df_cleaner['año_inspeccion'].value_counts().sort_index().items():
             print(f"  {year}: {count:,}")
     
     if 'pd_farmer_id' in df_cleaner.columns:
@@ -79,7 +79,7 @@ def main():
     
     print(f"\nSample rows (first 3):")
     display_cols = [c for c in ['pd_farmer_id', 'nombre_productor', 'dni', 
-                                 'base', 'area_cafe', 'inspeccion_year'] 
+                                 'base', 'area_cafe', 'año_inspeccion'] 
                     if c in df_cleaner.columns]
     if display_cols:
         print(df_cleaner[display_cols].head(3).to_string(index=False))
@@ -100,8 +100,8 @@ def main():
     print("-"*70)
     
     # Filter cleaner to 2024 only for fair comparison
-    if 'inspeccion_year' in df_cleaner.columns:
-        df_cleaner_2024 = df_cleaner[df_cleaner['inspeccion_year'] == 2024].copy()
+    if 'año_inspeccion' in df_cleaner.columns:
+        df_cleaner_2024 = df_cleaner[df_cleaner['año_inspeccion'] == 2024].copy()
         print(f"\nFiltered cleaner to 2024: {len(df_cleaner_2024)} rows")
     else:
         df_cleaner_2024 = df_cleaner.copy()

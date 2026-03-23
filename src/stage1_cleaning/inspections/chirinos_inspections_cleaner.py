@@ -106,7 +106,7 @@ class ChirinosInspectionsCleaner:
         
         print(f"\n✅ Chirinos inspections cleaning complete!")
         print(f"   Total inspections: {len(combined)}")
-        print(f"   Years: {sorted(combined['inspeccion_year'].unique())}")
+        print(f"   Years: {sorted(combined['año_inspeccion'].unique())}")
         
         return combined
     
@@ -136,7 +136,7 @@ class ChirinosInspectionsCleaner:
         df = self._harmonize_columns(df, year)
         
         # Add year identifier
-        df['inspeccion_year'] = year
+        df['año_inspeccion'] = year
         
         return df
     
@@ -565,7 +565,7 @@ class ChirinosInspectionsCleaner:
         df['country_code'] = 'PER'
         
         # Build data source string
-        years = sorted(df['inspeccion_year'].unique())
+        years = sorted(df['año_inspeccion'].unique())
         data_source = f"Chirinos inspection files: {', '.join(map(str, years))}"
         df['data_source'] = data_source
         
@@ -620,7 +620,7 @@ class ChirinosInspectionsCleaner:
         # Integer columns
         int_cols = [
             'nro_socio', 'altitud', 'numero_parcelas',
-            'compromiso_acopio_actual_qq', 'inspeccion_year',
+            'compromiso_acopio_actual_qq', 'año_inspeccion',
             'numero_trabajadores_temporales', 'numero_trabajadores_mujeres'
         ]
         
@@ -741,8 +741,8 @@ class ChirinosInspectionsCleaner:
         
         summary = {
             "total_inspections": len(df),
-            "years": sorted(df['inspeccion_year'].unique().tolist()),
-            "inspections_by_year": df['inspeccion_year'].value_counts().sort_index().to_dict(),
+            "years": sorted(df['año_inspeccion'].unique().tolist()),
+            "inspections_by_year": df['año_inspeccion'].value_counts().sort_index().to_dict(),
             "columns": len(df.columns),
             "column_names": df.columns.tolist()
         }

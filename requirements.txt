@@ -1,19 +1,21 @@
 # Core Data Processing
 pandas>=2.0.0
 numpy>=1.24.0
-openpyxl>=3.1.0              # For reading Excel files
+openpyxl>=3.1.0              # For reading/writing Excel files
 pyproj>=3.5.0                # For UTM coordinate conversion
-
+ 
+# String Matching (Bagua DNI resolution + transaction-farmer linking)
+fuzzywuzzy>=0.18.0
+python-Levenshtein>=0.21.0   # Required for fuzzywuzzy performance (avoids slow pure-Python fallback)
+ 
 # Database
 mysql-connector-python>=8.0.33
 python-dotenv>=1.0.0
-
+ 
 # API Integration
 requests>=2.31.0
-
-# Utilities
-pathlib>=1.0.1
-
+ 
 # Development & Testing (optional but recommended)
 pytest>=7.4.0
 black>=23.0.0                # Code formatter
+ 
