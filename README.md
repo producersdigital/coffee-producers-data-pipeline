@@ -1,256 +1,214 @@
 # Coffee Producer Organizations Data Pipeline
 
-A comprehensive data infrastructure project transforming smallholder coffee farmer data management for five Producer Organizations in Peru, enabling data-driven decision making and sustainable farming practices.
+A production-grade data infrastructure project transforming smallholder coffee farmer data management for five Producer Organizations (POs) in Peru, enabling evidence-based decision making, certification compliance, and sustainable farming practices.
 
 ---
 
 ## 📋 Project Overview
 
 ### The Challenge
-Five coffee Producer Organizations (POs) in Peru manage critical data about **900+ smallholder farmers** across **70,000+ transactions** and **4,000+ annual inspections**. This data exists in disparate Excel files with:
+Five coffee Producer Organizations in Peru manage critical data about **8,000+ smallholder farmers** across **100,000+ transactions** and **5+ years of annual inspections**. This data exists in disparate Excel files with:
 - Inconsistent formats across organizations and years
 - Manual data entry errors and duplications
 - No centralized access for analysis
 - Limited ability to track farmer progress over time
-- Difficulty generating insights for certification and sustainability initiatives
+- Difficulty generating insights for EUDR compliance and sustainability reporting
 
 ### The Solution
 This project builds a **production-grade data pipeline** that:
-1. **Cleans and standardizes** raw data from multiple sources and formats
-2. **Integrates** farmer records across years using intelligent matching
-3. **Migrates** data to a normalized MySQL database with referential integrity
-4. **Connects** to external APIs for real-time field data and soil predictions
-5. **Enables** analytics, dashboards, and evidence-based decision making
+1. **Cleans and standardizes** raw data from multiple sources, formats, and years
+2. **Integrates** farmer records across organizations using multi-step identity resolution
+3. **Migrates** data to a normalized MySQL Shared Data Layer (SDL) with referential integrity
+4. **Connects** to external APIs for real-time field data and soil analysis predictions
+5. **Enables** analytics dashboards and evidence-based decision making
 
 ---
 
 ## 🌍 Impact & Scope
 
-### Data Volume
-- **70,000+** transaction records (coffee purchases)
-- **4,000+** farmer inspection records
-- **5+ years** of historical transaction data per most organizations
-
-
----
-
-## 📈 Project at a Glance
-
 | Metric | Value |
 |--------|-------|
-| **Data Records Processed** | 70,000+ transactions, 4,000+ inspections |
-| **Historical Data** | 3-5 years per organization |
-| **Database Tables** | 15+ normalized tables with foreign keys |
-| **Code Quality** | Production-ready Python modules replacing ad-hoc notebooks |
-| **Geographic Coverage** | 5 regions across Peru |
-
-
-**Technology Stack**: Python, MySQL, Pandas, API integrations (Kobo, Sagri)  
-**Development Stage**: Phase 1 (Core pipeline) 70% complete | Phase 2 (Dashboards, APIs) in planning
+| **Farmer records** | 8,271 unique farmers across 5 POs |
+| **Transaction records** | 102,789 coffee purchase records |
+| **Inspection records** | 7,455 farmer-level inspection records (multi-year) |
+| **Historical depth** | Up to 5 years per organization (Chirinos 2020–2024) |
+| **Plot-level records** | 5,394 individual plot inspections |
+| **Database tables** | 13 normalized MySQL-ready tables |
+| **Geographic coverage** | 5 regions across Peru |
+| **Membership coverage** | 5,806 Norandino cooperative members integrated |
 
 ---
 
-## 🏗️ Technical Architecture
+## 🏗️ Architecture
 
 ```
 coffee-producers-data-pipeline/
 │
-├── config/
-│   └── paths.py                    # Centralized configuration
+├── config/                         # Centralized configuration
 │
 ├── src/
-│   ├── stage1_cleaning/            # Raw data → Clean standardized data
-│   │   ├── inspections/
-│   │   │   ├── bagua_inspections_cleaner.py
-│   │   │   ├── huadquina_inspections_cleaner.py
-│   │   │   ├── chirinos_inspections_cleaner.py
-│   │   │   ├── norandino_inspections_cleaner.py
-│   │   │   └── aprocassi_inspections_cleaner.py
-│   │   └── transactions/
-│   │       ├── bagua_transactions_cleaner.py
-│   │       ├── huadquina_transactions_cleaner.py
-│   │       ├── chirinos_transactions_cleaner.py
-│   │       ├── norandino_transactions_cleaner.py
-│   │       └── aprocassi_transactions_cleaner.py
+│   ├── stage1_cleaning/            # Raw Excel → Clean standardized PKL files
+│   │   ├── inspections/            # One cleaner class per PO (5 files)
+│   │   └── transactions/           # One cleaner class per PO (5 files)
 │   │
-│   ├── stage2_integration/         # Data integration & foreign keys
-│   │   ├── farmer_matching.py      # Intelligent farmer deduplication
-│   │   └── relationship_builder.py # Foreign key generation
+│   ├── stage2_integration/         # Clean PKL → MySQL-ready CSV tables
+│   │   ├── po_transformers.py      # PO-specific farmer/plot transformers
+│   │   ├── table_extractor.py      # MySQL schema extraction functions
+│   │   ├── transactions_processor.py  # DNI matching + unified transactions
+│   │   └── data_integrator.py      # Main orchestrator
 │   │
-│   ├── stage3_migration/           # MySQL database loading
+│   ├── stage3_migration/           # MySQL-ready CSVs → SDL database (pending)
 │   │   ├── schema_creator.py
 │   │   └── data_migrator.py
 │   │
-│   ├── kobo_api/                   # Real-time field data collection
-│   │   └── norandino_visits.py     # Kobo Toolbox integration
+│   ├── kobo_api/                   # Real-time field visit data (Norandino)
+│   ├── sagri_api/                  # Soil analysis & yield predictions
+│   ├── database/                   # Database connection utilities
 │   │
-│   ├── sagri_api/                  # Soil analysis & predictions
-│   │   └── soil_predictions.py     # Sagri platform integration
-│   │
-│   ├── database/                   # Database utilities
-│   │   └── connection.py
-│   │
-│   └── utils/                      # Shared components
-│       ├── dni_cleaner.py          # National ID validation
-│       ├── file_handler.py         # Excel/CSV processing
-│       └── column_cleaner.py       # Standardization
+│   └── utils/
+│       ├── dni_cleaner.py          # National ID validation & standardization
+│       ├── file_handler.py         # Multi-format Excel processing
+│       ├── column_cleaner.py       # Cross-organization standardization
+│       └── mapping_helpers.py      # Shared gender/unit lookup mappers
 │
-├── data/                           # Excluded from git (sensitive)
-│   ├── raw/                        # Original Excel/CSV files
-│   ├── processed/                  # Cleaned pickle files
-│   └── mysql_ready/                # Database-ready exports
+├── data/                           # Excluded from git (sensitive farmer data)
+│   ├── raw/                        # Original Excel/CSV source files
+│   ├── processed/                  # Stage 1 outputs (cleaned PKL files)
+│   └── mysql_ready/                # Stage 2 outputs organized by schema group
+│       ├── master/                 # farmers_data, lookup_producer_orgs
+│       ├── operational/            # addresses, transactions, inspections, harvests
+│       └── lookup/                 # countries, genders, units, currencies, products
 │
-├── scripts/                        # Executable runners
-│   ├── clean_*.py                  # Data cleaning scripts
-│   └── compare_*.py                # Validation scripts
+├── scripts/
+│   ├── clean_*.py                  # Stage 1 runner scripts (one per PO per data type)
+│   └── run_stage2.py               # Stage 2 full pipeline runner
 │
-├── docs/                           # Documentation
-│   ├── data_dictionary.md
-│   └── database_schema.md
-│
-└── tests/                          # Testing suite
+└── tests/
 ```
-
-**Note on Architecture**: The kobo_api and sagri_api modules are independent integration layers that connect external data sources directly to the database, operating in parallel to the core cleaning/integration/migration pipeline.
 
 ---
 
 ## 🔑 Key Technical Features
 
-### Advanced Data Cleaning
+### Stage 1: Advanced Data Cleaning
+- **Multi-year harmonization**: Chirinos inspections unified across 5 years (2020–2024) with column mapping per year
 - **Multi-format Excel handling**: Complex multi-row headers, merged cells, variable column structures
-- **DNI (National ID) validation**: 8-digit standardization with error correction (e.g., O→0 substitution)
-- **Intelligent total row detection**: Pattern-based removal of summary rows
-- **Encoding normalization**: UTF-8 handling across Spanish special characters
-- **Date parsing**: Multiple format support with error recovery
-- **Column harmonization**: Aggregating split columns across years (e.g., 6 crop types → `area_otros_cultivos`)
+- **DNI standardization**: 8-digit zero-padded strings with float/string normalization
+- **UTM coordinate conversion**: Zone 17S (EPSG:32717) via `pyproj` for Bagua and Aprocassi
+- **Plot aggregation**: Norandino's wide-format 10-plot-per-row structure aggregated to farmer level
+- **Stable sorts**: All comparisons use `kind='stable'` to prevent data corruption
+- **Verified against notebooks**: Each cleaner has a comparison script confirming row-for-row match
 
-### Farmer Identity Resolution
-Multi-step matching algorithm:
-1. **Exact DNI match**: Primary key when available
-2. **Fuzzy name matching**: Levenshtein distance for name variations
-3. **Synthetic ID generation**: `UNKNOWN_BG_001` pattern for unmatched records
-4. **Cross-year deduplication**: Same farmer across multiple inspection years gets one ID
+### Stage 2: Intelligent Data Integration
+- **Multi-year identity split**: Chirinos data correctly produces 1 row/farmer/year in temporal tables while maintaining 1 row/farmer in identity tables
+- **Membership file integration**: Norandino cooperative membership list cross-referenced against inspections and transactions — adds 3,507 members with no inspection activity
+- **3-stage transaction linking**: national_id exact match → farmer name exact match → fuzzy name match (90% threshold) — achieves 96%+ linkage rate
+- **Synthetic ID generation**: `UNKNOWN_BG_001` pattern for farmers in transactions with no matching record
+- **Plot deduplication**: Disambiguation of same-named plots with `#N` suffix; true duplicate removal
 
-### Database Design
-- **Normalized schema**: Farmers → Inspections → Transactions with proper foreign keys
-- **Referential integrity**: Cascading updates and deletes
-- **Data validation**: Pre-insertion checks for orphaned records
-- **Audit trails**: Creation timestamps and data source tracking
-
-### API Integrations
-- **Kobo Toolbox**: Real-time field visit data collection (Norandino)
-- **Sagri Platform**: Soil analysis and yield prediction API
+### Database Design (SDL)
+- **Normalized schema**: Farmers → Inspections → Plots → Transactions → Lookups
+- **Referential integrity**: Cascading foreign keys
+- **Schema grouping**: master / operational / lookup table separation
+- **Multi-PO ready**: `org_code` (BG/HU/CH/NO/AP) as FK throughout
 
 ---
 
 ## 📊 Current Status
 
-### ✅ Phase 1 Completed (Foundation)
-**Database Infrastructure**
-- [x] MySQL database schema design with normalized tables
-- [x] Referential integrity and foreign key constraints
-- [x] Migration of **70,000+ transaction records** to database
-- [x] Migration of **4,000+ farmer profiles** with relationship mapping
-- [x] Audit trails and data source tracking
+### ✅ Stage 1 Complete — All 5 PO Cleaners
 
-**Core Utilities**
-- [x] DNI (National ID) cleaner with validation and error correction
-- [x] File handler supporting multi-format Excel files (multi-row headers, merged cells)
-- [x] Column standardization module for cross-organization consistency
-- [x] Farmer matching algorithm (DNI-based, fuzzy name matching, synthetic ID generation)
+| PO | Inspections | Transactions | Notes |
+|----|-------------|--------------|-------|
+| **Bagua Grande** | ✅ 422 records | ✅ 4,373 records | 2025 corrected file integrated; UTM Zone 17S |
+| **Huadquiña** | ✅ 333 records | ✅ 23,597 records | Perfect match verified |
+| **Chirinos** | ✅ 4,028 records (5 years) | ✅ 39,331 records | Multi-year 2020–2024; `año_inspeccion` column |
+| **Norandino** | ✅ 2,343 records | ✅ 25,200 records | 10-plot aggregation; wide-format intermediate file |
+| **Aprocassi** | ✅ 888 records | ✅ 10,288 records | UTM Zone 17S fix |
 
-### 🔄 Phase 1 In Progress (Data Cleaning Pipeline)
-**Completed Producer Organizations:**
-- [x] **Bagua Grande**: 
-  - Inspections cleaner (422 records, 40 columns) - **Verified ✓**
-  - Transactions cleaner (4,373 records across 2022-2025) - **Verified ✓**
-  - *Note: 2025 data has known quality issues awaiting PO correction*
-  
-- [x] **Huadquiña**: 
-  - Inspections cleaner (333 records, 40 columns) - **Verified ✓**
-  - Transactions cleaner (23,597 records) - **Verified ✓**
-  
-- [x] **Chirinos**: 
-  - Transactions cleaner (39,331 records, 2020-2024) - **Verified ✓**
-  - Inspections cleaner (multi-year aggregation) - **In development**
+All cleaners verified with comparison scripts. Full test coverage against original notebooks.
 
-**Pending Producer Organizations:**
-- [ ] **Norandino**: Inspections + Transactions cleaners
-- [ ] **Aprocassi**: Inspections + Transactions cleaners
+### ✅ Stage 2 Complete — Data Integration Pipeline
 
-**Pipeline Progress**: ~55% complete (3 of 5 POs with verified cleaners)
+The full integration pipeline is operational and produces 13 MySQL-ready tables:
 
-### 🔄 Current Work (Week of March 2026)
-- Completing Chirinos inspections cleaner with column harmonization across years
-- Implementing farmer ID generation for multi-year Chirinos data
-- Code refactoring from Jupyter notebooks to production Python modules
-- Verification scripts comparing cleaner outputs against original notebooks
+**Pipeline order:**
+```
+Load Stage 1 PKLs
+  → PO transformers (farmer-level + plot-level per PO)
+  → Temporal/identity split (Chirinos multi-year fix)
+  → Extract inspection tables
+  → Norandino membership integration
+  → Build transactions table (incl. Bagua DNI fuzzy matching)
+  → Link transactions to farmers (3-stage matching)
+  → Add unmatched transaction farmers as External
+  → Build addresses from complete farmer table
+  → Export to data/mysql_ready/
+```
 
-### 📋 Planned (Phase 2)
-- [ ] **Dashboard connectivity**: Connect database to visualization platforms (Power BI / Tableau / custom web dashboards)
-- [ ] **Phase 2 database tables** - Migration and integration of:
-  - **ROTA**: Crop rotation tracking and planning data
-  - **EUDR Alerts**: EU Deforestation Regulation compliance monitoring
-  - **Polygons**: Polygons data of each plot from each farmer
-  - **Training Data**: Training topics and records
-- [ ] **API deployment**: 
-  - Kobo API integration for real-time field visit data (Norandino)
-  - Sagri API integration for soil analysis predictions
-- [ ] **Automated data pipelines** for annual updates
-- [ ] **Data quality monitoring** and alerting system
-- [ ] **Advanced analytics**:
-  - Machine learning models for yield prediction
-  - Risk assessment algorithms
-  - Climate adaptation indicators
+**Final table counts:**
+
+| Table | Records | Location |
+|-------|---------|----------|
+| `farmers_data` | 8,271 | master/ |
+| `farmers_addresses` | 8,271 | operational/ |
+| `farmer_level_inspections` | 7,455 | operational/ |
+| `plot_level_inspections` | 5,394 | operational/ |
+| `farmer_level_harvests` | 4,289 | operational/ |
+| `plot_level_harvests` | 5,394 | operational/ |
+| `acopio_transactions` | 102,789 | operational/ |
+| `lookup_producer_orgs` | 5 | master/ |
+| 5 × lookup tables | 7–8 each | lookup/ |
+
+### 🔄 Stage 3 In Progress — MySQL Migration
+
+MySQL schema and migration scripts exist (`stage3_migration/`) but have not yet been run against the production SDL database. The `data/mysql_ready/` CSV exports are the handoff point for this step.
+
+**Next steps:**
+1. Run `schema_creator.py` to create SDL tables
+2. Run `data_migrator.py` to load all 13 tables
+3. Verify row counts and foreign key integrity in MySQL
+
+### 📋 Phase 2 Planned — Second Data Layer
+
+The following datasets are identified for a second integration round into the SDL:
+
+| Dataset | Source | Status |
+|---------|--------|--------|
+| **ROTA financial data** | Producers Direct financial system | Awaiting data export |
+| **Plot polygons** | Chirinos + Norandino field GPS data | Files received, pipeline TBD |
+| **Training records** | Bagua Grande + Norandino training logs | Files received, pipeline TBD |
+| **EUDR deforestation alerts** | EU deforestation monitoring API | Integration design pending |
+
+**Phase 2 also includes:**
+- Kobo Toolbox API → `technical_assistance_visits` table (Norandino)
+- Sagri ML API → `sagri_soil_data` + `sagri_plots` tables
+- Annual refresh automation for all 5 POs
 
 ---
 
-## 🎓 Collaboration Opportunities
+## 🚀 Running the Pipeline
 
-We are actively seeking partnerships with universities and research institutions specialized in data science, agricultural technology, and development economics.
+### Prerequisites
+```bash
+conda activate coffee-data-system
+pip install -r requirements.txt
+```
 
-### Priority Opportunities
+### Stage 1 — Clean all POs
+```bash
+# Run individual cleaners (example)
+python scripts/clean_bagua_inspections.py
+python scripts/clean_bagua_transactions.py
+# ... repeat for all 5 POs
+```
 
-**1. Sagri Soil Analysis Model Validation** ⭐
-- **Challenge**: Validate predictive accuracy of Sagri platform's soil analysis and yield forecasting models
-- **Scope**: Compare Sagri predictions against actual harvest data from our database
-- **Impact**: Ensure evidence-based soil management recommendations for smallholder farmers
-- **Skills needed**: Machine learning validation, agricultural science, statistical analysis
+### Stage 2 — Full integration
+```bash
+python scripts/run_stage2.py
+```
 
-**2. Code Review & Refactoring**
-- **Challenge**: Optimize data cleaning algorithms for performance and maintainability
-- **Scope**: Review ~5,000 lines of Python code across cleaning, integration, and migration modules
-- **Impact**: Improve pipeline efficiency and reduce processing time
-- **Skills needed**: Python, pandas, software engineering best practices
-
-
-### Research Collaboration Areas
-
-**Data Science / Computer Science**
-- Machine learning model development (yield prediction, risk scoring, anomaly detection)
-- Research of historical and predictive climate datasets for climate dashboards 
-- Automated data quality checks and validation frameworks
-- Natural language processing for farmer feedback analysis from agricultural advice
-- Time series analysis of productivity trends
-
-**Agricultural Science / Economics**
-- Climate adaptation strategies and their correlation with yield outcomes
-- Soil health indicators and their relationship to coffee quality
-- Supply chain optimization and market access analysis
-
-**Social Science / Development Studies**
-- Gender equity analysis in smallholder farming cooperatives
-- Economic empowerment indicators and household resilience
-- Community development impact of PO membership
-
-### What We Provide
-
-✅ **Access to real-world agricultural data** (anonymized as needed)  
-✅ **Direct connection with Producer Organizations** for field validation  
-✅ **Existing database infrastructure** ready for analysis  
-✅ **Technical documentation** and data dictionaries  
-
+Outputs are written to `data/mysql_ready/master/`, `operational/`, and `lookup/`.
 
 ---
 
@@ -258,37 +216,63 @@ We are actively seeking partnerships with universities and research institutions
 
 **Languages**: Python 3.11+  
 **Database**: MySQL 8.0  
-**Key Libraries**: 
-- `pandas` - Data manipulation
-- `numpy` - Numerical operations
-- `openpyxl` - Excel file handling
-- `mysql-connector-python` - Database connectivity
-- `fuzzywuzzy` - Fuzzy string matching
-- `requests` - API integrations
+**Key Libraries**:
 
-**Development**: Git, VS Code, Jupyter Notebooks (migration to .py modules in progress)
+| Library | Purpose |
+|---------|---------|
+| `pandas` | Data manipulation and pipeline orchestration |
+| `numpy` | Numerical operations |
+| `openpyxl` | Multi-format Excel file handling |
+| `pyproj` | UTM coordinate conversion (Zone 17S) |
+| `fuzzywuzzy` + `python-Levenshtein` | Fuzzy farmer name matching |
+| `mysql-connector-python` | SDL database connectivity |
+| `requests` | Kobo + Sagri API integrations |
+| `python-dotenv` | Credential management |
+
+**Development**: Git, VS Code  
+**Architecture**: Modular Python classes replacing ad-hoc Jupyter notebooks
 
 ---
 
 ## 🔒 Data Privacy & Security
 
-- **No sensitive data in repository**: All farmer data, credentials, and certificates excluded via `.gitignore`
-- **Anonymization**: Personal identifiers can be masked for research datasets
-- **Access control**: Database credentials managed via environment variables
+- **No sensitive data in repository**: All farmer data, credentials, certificates and raw files excluded via `.gitignore`
+- **Canonical ID format**: DNI normalized to 8-digit zero-padded strings throughout
+- **Synthetic IDs**: Unmatched farmers receive `UNKNOWN_<ORG>_<N>` IDs — no personal data exposed
+- **Credentials**: Database and API credentials managed exclusively via environment variables (`.env`)
 
+---
 
+## 🎓 Collaboration Opportunities
+
+We are actively seeking partnerships with universities and research institutions in data science, agricultural technology, and development economics.
+
+### Priority Research Areas
+
+**1. Sagri Soil Analysis Model Validation** ⭐
+Validate predictive accuracy of Sagri's soil analysis and yield forecasting models against actual harvest data from our database. Skills needed: ML validation, agricultural science, statistical analysis.
+
+**2. EUDR Compliance Analytics**
+Develop monitoring tools for EU Deforestation Regulation compliance using plot polygon data and deforestation alert feeds. Skills needed: GIS, environmental data, Python.
+
+**3. Yield Prediction & Climate Adaptation**
+Time series analysis of productivity trends and their correlation with altitude, soil health, and climate variables. Skills needed: ML, time series, agricultural economics.
+
+**4. Gender Equity & Social Impact**
+Analysis of gender indicators across cooperatives and their relationship to farm productivity and PO membership benefits. Skills needed: social science, statistics.
+
+### What We Provide
+✅ Real-world agricultural data (anonymizable for research use)  
+✅ Direct connection with 5 Producer Organizations for field validation  
+✅ Existing database infrastructure ready for analysis  
+✅ Technical documentation and data dictionaries  
 
 ---
 
 ## 📞 Contact
 
 **Project Developer**: Daniela  
-**Organization**: Producers Direct
-
-
-**For Collaboration Inquiries**:  
-📧 Email: [sam@producersdirect.org]
-🌐 Website: [(https://producersdirect.org/)]  
-💻 GitHub: [https://github.com/producersdigital/coffee-producers-data-pipeline]
-
----
+**Organization**: Producers Direct  
+📧 [sam@producersdirect.org]  
+🌐 [producersdirect.org](https://producersdirect.org/)  
+💻 [github.com/producersdigital/coffee-producers-data-pipeline](https://github.com/producersdigital/coffee-producers-data-pipeline)
