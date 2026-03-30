@@ -79,6 +79,7 @@ def extract_farmer_addresses_table(all_farmers_df: pd.DataFrame) -> pd.DataFrame
  
     addresses_table = pd.DataFrame({
         'pd_farmer_id':          df['pd_farmer_id'],
+        'national_id':           df['national_id'] if 'national_id' in df.columns else None,
         'country_code':          df['country_code'] if 'country_code' in df.columns else 'PER',
         'administrative_area_1': _str_col(df.get('department',  pd.Series('', index=df.index))),
         'administrative_area_2': _str_col(df.get('province',    pd.Series('', index=df.index))),
