@@ -84,6 +84,57 @@ def _num(row, col):
         return None
  
  
+def _date(row, col):
+    """Return a valid YYYY-MM-DD date string or None.
+ 
+    Handles:
+      '2025'        -> '2025-01-01'  (bare year from membership file)
+      '2023-06-15'  -> '2023-06-15'  (ISO format, pass through)
+      '15-06-2023'  -> '2023-06-15'  (Latin American DD-MM-YYYY with dashes)
+      '15/06/2023'  -> '2023-06-15'  (Latin American DD/MM/YYYY with slashes)
+      '06/15/2023'  -> '2023-06-15'  (US MM/DD/YYYY with slashes)
+      ''/ None / unparseable -> None
+    """
+    v = _val(row, col)
+    if not v:
+        return None
+    v = str(v).strip()
+    from datetime import datetime
+ 
+    # Bare 4-digit year — convert to Jan 1 of that year
+    if v.isdigit() and len(v) == 4:
+        return f"{v}-01-01"
+ 
+    # Detect DD-MM-YYYY vs YYYY-MM-DD by checking if first segment is 2 digits
+    if '-' in v:
+        parts = v.split('-')
+        if len(parts) == 3 and len(parts[0]) == 2:
+            # Looks like DD-MM-YYYY (Latin American format with dashes)
+            try:
+                return datetime.strptime(v, '%d-%m-%Y').strftime('%Y-%m-%d')
+            except ValueError:
+                pass
+ 
+    # Try remaining formats in order
+    for fmt in ('%Y-%m-%d', '%Y-%m-%d %H:%M:%S', '%d/%m/%Y', '%m/%d/%Y'):
+        try:
+            return datetime.strptime(v, fmt).strftime('%Y-%m-%d')
+        except ValueError:
+            continue
+    return None
+ 
+ 
+def _coord(row, col, is_lat=True):
+    v = _num(row, col)
+    if v is None:
+        return None
+    if is_lat and not (-90 <= v <= 90):
+        return None
+    if not is_lat and not (-180 <= v <= 180):
+        return None
+    return v
+ 
+ 
 def _bool(value):
     """Convert TRUE/FALSE string or bool to 1/0."""
     return 1 if str(value).strip().upper() == 'TRUE' else 0
@@ -122,6 +173,21 @@ def _get_farmer_id(cursor, national_id=None, pd_farmer_id=None):
 # CLEAR DATA
 # =============================================================================
  
+def _ping_connection(conn):
+    """Ping connection to keep it alive. Reconnects if dropped."""
+    try:
+        conn.ping(reconnect=True, attempts=3, delay=5)
+    except Exception:
+        pass
+ 
+ 
+def _progress(loaded: int, skipped: int, total: int, label: str):
+    done = loaded + skipped
+    pct  = done / total * 100 if total else 0
+    print(f"    [{pct:5.1f}%] {done:,}/{total:,} processed "
+          f"— {loaded:,} loaded, {skipped:,} skipped  ({label})", flush=True)
+ 
+ 
 def clear_existing_data() -> bool:
     """Delete all data from main tables in reverse FK order. Keeps lookup data."""
     conn = create_connection()
@@ -130,15 +196,21 @@ def clear_existing_data() -> bool:
     cursor = conn.cursor()
     try:
         print("  Clearing main tables...")
+        # technical_assistance_visits is cleared here so it can be
+        # repopulated via import_kobo_visits.py after migration completes.
+        # The Kobo importer looks up farmer_id by national_id at import time,
+        # so it always links correctly to the freshly loaded farmers table.
         for table in [
-            'collection_transactions',
-            'harvests_plot_level',
-            'harvests_farmer_level',
-            'inspections_plot_level',
-            'inspections_farmer_level',
-            'farmer_addresses',
-            'farmers',
-            'producer_organizations',
+            'technical_assistance_visits',  # FK → farmers
+            'collection_transactions',      # FK → farmers
+            'harvests_plot_level',          # FK → farmers
+            'harvests_farmer_level',        # FK → farmers
+            'inspections_plot_level',       # FK → farmers
+            'inspections_farmer_level',     # FK → farmers
+            'farmer_addresses',             # FK → farmers
+            'farmers',                      # FK → producer_organizations
+            'extensionists',                # FK → producer_organizations
+            'producer_organizations',       # parent — safe to delete now
         ]:
             cursor.execute(f"DELETE FROM {table}")
         conn.commit()
@@ -161,8 +233,11 @@ def clear_lookup_data() -> bool:
     cursor = conn.cursor()
     try:
         for table in [
-            'lookup_countries', 'lookup_units', 'lookup_product_types',
-            'lookup_genders', 'lookup_currencies',
+            'lookup_units',         # FK → lookup_countries (country_primary)
+            'lookup_product_types', # no FK
+            'lookup_genders',       # no FK
+            'lookup_countries',     # FK → lookup_currencies
+            'lookup_currencies',    # parent
         ]:
             cursor.execute(f"DELETE FROM {table}")
         conn.commit()
@@ -376,6 +451,23 @@ def load_farmers() -> bool:
         df = pd.read_csv(MASTER / 'farmers_data.csv')
         loaded = skipped = 0
  
+        # Guard against duplicate pd_farmer_id within the CSV
+        # (can happen with multi-year inspections before deduplication)
+        # Keep first occurrence — national_id is the true unique key
+        before = len(df)
+        dup_mask = (
+            df['pd_farmer_id'].notna() &
+            (df['pd_farmer_id'].astype(str).str.strip() != '') &
+            (df['pd_farmer_id'].astype(str).str.strip() != 'nan') &
+            df.duplicated(subset=['pd_farmer_id'], keep='first')
+        )
+        if dup_mask.sum() > 0:
+            # Null out pd_farmer_id for duplicates rather than dropping rows
+            # so the farmer record is still inserted, just without the duplicate ID
+            df.loc[dup_mask, 'pd_farmer_id'] = None
+            print(f"  ℹ️  Nulled {dup_mask.sum()} duplicate pd_farmer_id values "
+                  f"(national_id remains unique key)")
+ 
         for _, row in df.iterrows():
             cursor.execute(
                 "SELECT org_id FROM producer_organizations WHERE org_code = %s",
@@ -417,17 +509,17 @@ def load_farmers() -> bool:
                 _val(row, 'farmer_name'),
                 _val(row, 'telephone'),
                 gender_id,
-                _val(row, 'birth_date'),
+                _date(row, 'birth_date'),
                 _val(row, 'base'),
                 _val(row, 'member_status'),
-                _val(row, 'entry_date'),
+                _date(row, 'entry_date'),
                 _val(row, 'membership_number'),
             ))
             loaded += 1
  
-            if loaded % 1000 == 0:
+            if loaded % 500 == 0:
                 conn.commit()
-                print(f"    Committed {loaded}...")
+                _progress(loaded, skipped, len(df), 'farmers')
  
         conn.commit()
         print(f"  ✅ {loaded} farmers loaded, {skipped} skipped")
@@ -444,6 +536,28 @@ def load_farmers() -> bool:
 # =============================================================================
 # OPERATIONAL TABLES
 # =============================================================================
+ 
+def _clear_farmer_addresses() -> bool:
+    """Clear farmer_addresses so it can be reloaded cleanly."""
+    conn = create_connection()
+    if not conn:
+        return False
+    cursor = conn.cursor()
+    try:
+        cursor.execute("DELETE FROM farmer_addresses")
+        conn.commit()
+        cursor.execute("SELECT COUNT(*) FROM farmer_addresses")
+        count = cursor.fetchone()[0]
+        print(f"  ✅ farmer_addresses cleared ({count} rows remaining)")
+        return True
+    except Exception as e:
+        conn.rollback()
+        print(f"  ❌ {e}")
+        return False
+    finally:
+        cursor.close()
+        conn.close()
+ 
  
 def load_farmer_addresses() -> bool:
     """
@@ -478,6 +592,17 @@ def load_farmer_addresses() -> bool:
                 skipped += 1
                 continue
  
+            # Skip if address already exists for this farmer
+            cursor.execute(
+                "SELECT 1 FROM farmer_addresses WHERE farmer_id = %s LIMIT 1",
+                (farmer_id,)
+            )
+            if cursor.fetchone():
+                skipped += 1
+                if (loaded + skipped) % 500 == 0:
+                    _progress(loaded, skipped, len(df), 'addresses')
+                continue
+ 
             cursor.execute("""
                 INSERT INTO farmer_addresses (
                     farmer_id, country_id,
@@ -498,8 +623,10 @@ def load_farmer_addresses() -> bool:
             ))
             loaded += 1
  
-            if loaded % 1000 == 0:
+            if loaded % 500 == 0:
                 conn.commit()
+                _ping_connection(conn)
+                _progress(loaded, skipped, len(df), 'addresses')
  
         conn.commit()
         print(f"  ✅ {loaded} addresses loaded, {skipped} skipped")
@@ -548,6 +675,15 @@ def load_farmer_inspections() -> bool:
                 continue
             product_type_id = result[0]
  
+            # Skip if inspection already exists for this farmer + year
+            cursor.execute(
+                "SELECT 1 FROM inspections_farmer_level WHERE farmer_id = %s AND inspection_year = %s LIMIT 1",
+                (farmer_id, _val(row, 'inspection_year'))
+            )
+            if cursor.fetchone():
+                skipped += 1
+                continue
+ 
             cursor.execute("""
                 INSERT INTO inspections_farmer_level (
                     farmer_id, inspection_year, internal_inspector_name, product_type_id,
@@ -578,12 +714,12 @@ def load_farmer_inspections() -> bool:
                 _num(row, 'other_crops_area_ha'), _num(row, 'forest_area_ha'),
                 _num(row, 'secondary_forest_area_ha'), _num(row, 'purma_area_ha'),
                 _num(row, 'rehabilitation_area_ha'), _num(row, 'cultivable_area_ha'),
-                _num(row, 'latitude'), _num(row, 'longitude'), _num(row, 'altitude'),
+                _coord(row, 'latitude', is_lat=True), _coord(row, 'longitude', is_lat=False), _num(row, 'altitude'),
                 _val(row, 'utm_zone'), _num(row, 'x_east'), _num(row, 'y_north'),
-                _val(row, 'last_internal_control_date'),
+                _date(row, 'last_internal_control_date'),
                 _val(row, 'internal_control_result'),
-                _val(row, 'conversion_start_date'),
-                _val(row, 'last_external_control_date'),
+                _date(row, 'conversion_start_date'),
+                _date(row, 'last_external_control_date'),
                 _val(row, 'eu_previous_certification'),
                 _val(row, 'eu_current_certification'),
                 _val(row, 'nop_current_certification'),
@@ -595,9 +731,12 @@ def load_farmer_inspections() -> bool:
             ))
             loaded += 1
  
-            if loaded % 500 == 0:
+            total_processed = loaded + skipped
+            if total_processed % 100 == 0:
                 conn.commit()
-                print(f"    Committed {loaded}...")
+                _ping_connection(conn)
+            if total_processed % 500 == 0:
+                _progress(loaded, skipped, len(df), 'farmer inspections')
  
         conn.commit()
         print(f"  ✅ {loaded} farmer inspections loaded, {skipped} skipped")
@@ -641,6 +780,15 @@ def load_plot_inspections() -> bool:
                 continue
             product_type_id = result[0]
  
+            # Skip if plot inspection already exists for this farmer + plot + year
+            cursor.execute(
+                "SELECT 1 FROM inspections_plot_level WHERE farmer_id = %s AND plot_name = %s AND inspection_year = %s LIMIT 1",
+                (farmer_id, _val(row, 'plot_name'), _val(row, 'inspection_year'))
+            )
+            if cursor.fetchone():
+                skipped += 1
+                continue
+ 
             cursor.execute("""
                 INSERT INTO inspections_plot_level (
                     farmer_id, inspection_year, plot_internal_inspector_name, product_type_id,
@@ -662,20 +810,23 @@ def load_plot_inspections() -> bool:
                 _num(row, 'plot_other_crops_area_ha'), _num(row, 'plot_growing_area_ha'),
                 _num(row, 'plot_conversion_area_ha'), _num(row, 'plot_forest_area_ha'),
                 _num(row, 'plot_rehabilitation_area_ha'),
-                _num(row, 'latitude'), _num(row, 'longitude'), _num(row, 'altitude'),
+                _coord(row, 'latitude', is_lat=True), _coord(row, 'longitude', is_lat=False), _num(row, 'altitude'),
                 _val(row, 'utm_zone'), _num(row, 'x_east'), _num(row, 'y_north'),
-                _val(row, 'plot_last_internal_control_date'),
+                _date(row, 'plot_last_internal_control_date'),
                 _val(row, 'plot_internal_control_result'),
-                _val(row, 'plot_conversion_start_date'),
+                _date(row, 'plot_conversion_start_date'),
                 _val(row, 'plot_eu_previous_certification'),
                 _val(row, 'plot_eu_current_certification'),
                 _val(row, 'plot_nop_current_certification'),
             ))
             loaded += 1
  
-            if loaded % 500 == 0:
+            total_processed = loaded + skipped
+            if total_processed % 100 == 0:
                 conn.commit()
-                print(f"    Committed {loaded}...")
+                _ping_connection(conn)
+            if total_processed % 500 == 0:
+                _progress(loaded, skipped, len(df), 'plot inspections')
  
         conn.commit()
         print(f"  ✅ {loaded} plot inspections loaded, {skipped} skipped")
@@ -740,6 +891,15 @@ def load_farmer_harvests() -> bool:
                 if u:
                     unit_id = u[0]
  
+            # Skip if harvest already exists for this farmer + year
+            cursor.execute(
+                "SELECT 1 FROM harvests_farmer_level WHERE farmer_id = %s AND harvest_year = %s LIMIT 1",
+                (farmer_id, _val(row, 'harvest_year'))
+            )
+            if cursor.fetchone():
+                skipped += 1
+                continue
+ 
             cursor.execute("""
                 INSERT INTO harvests_farmer_level (
                     farmer_id, inspection_id, harvest_year, product_type_id, unit_id,
@@ -766,9 +926,12 @@ def load_farmer_harvests() -> bool:
             ))
             loaded += 1
  
-            if loaded % 500 == 0:
+            total_processed = loaded + skipped
+            if total_processed % 100 == 0:
                 conn.commit()
-                print(f"    Committed {loaded}...")
+                _ping_connection(conn)
+            if total_processed % 500 == 0:
+                _progress(loaded, skipped, len(df), 'farmer harvests')
  
         conn.commit()
         print(f"  ✅ {loaded} farmer harvests loaded, {skipped} skipped")
@@ -834,6 +997,15 @@ def load_plot_harvests() -> bool:
                 if u:
                     unit_id = u[0]
  
+            # Skip if plot harvest already exists — use plot_inspection_id as key
+            cursor.execute(
+                "SELECT 1 FROM harvests_plot_level WHERE plot_inspection_id = %s LIMIT 1",
+                (plot_inspection_id,)
+            )
+            if cursor.fetchone():
+                skipped += 1
+                continue
+ 
             cursor.execute("""
                 INSERT INTO harvests_plot_level (
                     farmer_id, plot_inspection_id, harvest_year, product_type_id, unit_id,
@@ -861,9 +1033,12 @@ def load_plot_harvests() -> bool:
             ))
             loaded += 1
  
-            if loaded % 100 == 0:
+            total_processed = loaded + skipped
+            if total_processed % 100 == 0:
                 conn.commit()
-                print(f"    Committed {loaded}...")
+                _ping_connection(conn)
+            if total_processed % 500 == 0:
+                _progress(loaded, skipped, len(df), 'plot harvests')
  
         conn.commit()
         print(f"  ✅ {loaded} plot harvests loaded, {skipped} skipped")
@@ -877,36 +1052,55 @@ def load_plot_harvests() -> bool:
         conn.close()
  
  
+def _reconnect():
+    """Create a fresh connection and cursor. Used for reconnection after timeout."""
+    conn = create_connection()
+    if not conn:
+        raise RuntimeError("Could not reconnect to MySQL")
+    cursor = conn.cursor()
+    return conn, cursor
+ 
+ 
 def load_transactions() -> bool:
     """
     Load all 102,789 transactions.
     3-step farmer matching: national_id → pd_farmer_id → farmer_name.
     Resumes automatically if interrupted (skips already-loaded rows by index).
+    Reconnects transparently if the server drops the connection mid-load.
     """
-    conn = create_connection()
-    if not conn:
-        return False
-    cursor = conn.cursor()
-    try:
-        df = pd.read_csv(
-            OPERATIONAL / 'acopio_transactions.csv',
-            low_memory=False,
-            keep_default_na=True,
-            na_values=['', 'nan', 'NaN', 'NA'],
-        )
+    conn, cursor = _reconnect()
  
-        cursor.execute("SELECT COUNT(*) FROM collection_transactions")
-        already_loaded = cursor.fetchone()[0]
-        if already_loaded > 0:
-            print(f"    Resuming from row {already_loaded} ({already_loaded} already in DB)")
+    df = pd.read_csv(
+        OPERATIONAL / 'acopio_transactions.csv',
+        low_memory=False,
+        keep_default_na=True,
+        na_values=['', 'nan', 'NaN', 'NA'],
+    )
  
-        loaded = no_farmer = no_currency = no_product = skipped = 0
+    cursor.execute("SELECT COUNT(*) FROM collection_transactions")
+    already_loaded = cursor.fetchone()[0]
+    if already_loaded > 0:
+        print(f"    Resuming from row {already_loaded} ({already_loaded} already in DB)")
  
-        for idx, row in df.iterrows():
-            if idx < already_loaded:
-                skipped += 1
-                continue
+    loaded = no_farmer = no_currency = no_product = skipped = 0
  
+    for idx, row in df.iterrows():
+        if idx < already_loaded:
+            skipped += 1
+            continue
+ 
+        # Reconnect transparently if connection was dropped
+        try:
+            conn.ping(reconnect=True, attempts=5, delay=3)
+        except Exception:
+            try:
+                print("    ⚠️  Reconnecting...", flush=True)
+                conn, cursor = _reconnect()
+            except Exception as e:
+                print(f"  ❌ Could not reconnect: {e}")
+                return False
+ 
+        try:
             # 3-step farmer match
             farmer_id = _get_farmer_id(
                 cursor,
@@ -974,7 +1168,7 @@ def load_transactions() -> bool:
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 farmer_id,
-                _val(row, 'transaction_date'), _num(row, 'campaign_year'),
+                _date(row, 'transaction_date'), _num(row, 'campaign_year'),
                 _val(row, 'national_id'), _val(row, 'category'),
                 product_type_id, unit_id,
                 _num(row, 'local_unit_quantity'), _num(row, 'kg_quantity'),
@@ -988,24 +1182,33 @@ def load_transactions() -> bool:
             ))
             loaded += 1
  
-            if loaded % 500 == 0:
+            if loaded % 100 == 0:
                 conn.commit()
-                total = skipped + loaded + no_farmer + no_currency + no_product
-                print(f"    {total}/{len(df)} processed...")
+            if loaded % 500 == 0:
+                done = skipped + loaded + no_farmer + no_currency + no_product
+                pct  = done / len(df) * 100 if len(df) else 0
+                print(f"    [{pct:5.1f}%] {done:,}/{len(df):,} — {loaded:,} loaded, {no_farmer} no-farmer", flush=True)
  
+        except Exception as e:
+            print(f"    ⚠️  Row {idx} error: {e} — skipping", flush=True)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            continue
+ 
+    try:
         conn.commit()
-        print(f"  ✅ {loaded} transactions loaded (resumed past {skipped})")
-        if no_farmer or no_currency or no_product:
-            print(f"     Skipped: {no_farmer} no-farmer, "
-                  f"{no_currency} no-currency, {no_product} no-product")
-        return True
-    except Exception as e:
-        conn.rollback()
-        print(f"  ❌ {e}")
-        return False
-    finally:
-        cursor.close()
-        conn.close()
+    except Exception:
+        pass
+ 
+    print(f"  ✅ {loaded} transactions loaded (resumed past {skipped})")
+    if no_farmer or no_currency or no_product:
+        print(f"     Skipped: {no_farmer} no-farmer, "
+              f"{no_currency} no-currency, {no_product} no-product")
+    cursor.close()
+    conn.close()
+    return True
  
  
 # =============================================================================
@@ -1067,25 +1270,26 @@ def load_all_data(
     print("=" * 60)
  
     steps = [
-        # ── Lookup (idempotent — ON DUPLICATE KEY, safe to always run) ──
-        ("Clear lookup tables",       clear_lookup_data,        clear_lookup),
-        ("Load currencies",           load_currencies,          True),
-        ("Load genders",              load_genders,             True),
-        ("Load product types",        load_product_types,       True),
-        ("Load units",                load_units,               True),
-        ("Load countries",            load_countries,           True),
-        # ── Clear main tables ────────────────────────────────────────────
-        ("Clear main tables",         clear_existing_data,      clear_main),
+        # ── Clear main tables FIRST (before lookups — FK constraint order) ─
+        # ("Clear main tables",         clear_existing_data,      clear_main),
+        # ── Clear lookup tables (safe now that main tables are empty) ────
+        # ("Clear lookup tables",       clear_lookup_data,        clear_lookup),
+        # ── Reload lookup tables ─────────────────────────────────────────
+        # ("Load currencies",           load_currencies,          True),
+        # ("Load genders",              load_genders,             True),
+        # ("Load product types",        load_product_types,       True),
+        # ("Load countries",            load_countries,           True),
+        # ("Load units",                load_units,               True),
         # ── Master ───────────────────────────────────────────────────────
-        ("Load organizations",        load_organizations,       True),
-        ("Load farmers",              load_farmers,             True),
+        # ("Load organizations",        load_organizations,       True),
+        # ("Load farmers",              load_farmers,             True),  # done
         # ── Operational ──────────────────────────────────────────────────
-        ("Load farmer addresses",     load_farmer_addresses,    True),
-        ("Load farmer inspections",   load_farmer_inspections,  True),
+        # ("Load farmer addresses",     load_farmer_addresses,    True),  # done
+        ("Load farmer inspections",   load_farmer_inspections,  True),  # done
         ("Load plot inspections",     load_plot_inspections,    True),
         ("Load farmer harvests",      load_farmer_harvests,     True),
         ("Load plot harvests",        load_plot_harvests,       True),
-        ("Load transactions",         load_transactions,        True),
+        # ("Load transactions",         load_transactions,        True),
         # ── Summary ──────────────────────────────────────────────────────
         ("Show results",              show_results,             True),
     ]

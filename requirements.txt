@@ -19,3 +19,5 @@ requests>=2.31.0
 pytest>=7.4.0
 black>=23.0.0                # Code formatter
  
+#web app for CEA models
+streamlit>=1.20.0

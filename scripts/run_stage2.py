@@ -12,7 +12,7 @@ Usage:
 Prerequisites:
     - All Stage 1 cleaners must have been run successfully
     - Processed pkl files must exist in data/processed/inspections/ and data/processed/transactions/
-    - Optional: Norandino membership file at data/raw/inspections/norandino/MEMBRESIA COOP NORANDINO 13.10.25.xlsx
+    - Optional: Membership files for configured POs (see MEMBERSHIP_CONFIGS in data_integrator.py)
  
 Outputs:
     data/mysql_ready/
@@ -43,9 +43,7 @@ from src.stage2_integration.data_integrator import (
     create_all_mysql_ready_datasets,
     INSPECTION_PATHS,
     TRANSACTION_PATHS,
-    MEMBERSHIP_PATHS,
-    MEMBERSHIP_SHEET,
-    MEMBERSHIP_HEADER,
+    MEMBERSHIP_CONFIGS,
     MYSQL_READY_DIR,
 )
  
@@ -81,28 +79,13 @@ def _validate_stage1_outputs() -> bool:
     return True
  
  
-def _load_norandino_membership() -> 'pd.DataFrame | None':
-    """
-    Load Norandino membership file if it exists.
- 
-    Returns:
-        DataFrame if file found, None otherwise.
-    """
-    path = MEMBERSHIP_PATHS['norandino']
- 
-    if not path.exists():
-        print(f"  ℹ️  Norandino membership file not found — skipping membership integration")
-        print(f"     Expected at: {path}")
-        return None
- 
-    print(f"  Loading Norandino membership file...")
-    df = pd.read_excel(
-        path,
-        sheet_name=MEMBERSHIP_SHEET['norandino'],
-        header=MEMBERSHIP_HEADER['norandino'],
-    )
-    print(f"  ✅ Loaded membership file: {len(df):,} records")
-    return df
+def _check_membership_files() -> None:
+    """Report which membership files are available for integration."""
+    for po_key, config in MEMBERSHIP_CONFIGS.items():
+        if config['path'].exists():
+            print(f"  ✅ {config['org_code']} membership file found: {config['path'].name}")
+        else:
+            print(f"  ⏭  {config['org_code']} no membership file — will use inspections only")
  
  
 def main():
@@ -121,8 +104,8 @@ def main():
     # -----------------------------------------------------------------------
     # Load optional Norandino membership file
     # -----------------------------------------------------------------------
-    print("\nChecking Norandino membership file...")
-    norandino_membership_df = _load_norandino_membership()
+    print("\nChecking membership files...")
+    _check_membership_files()
  
     # -----------------------------------------------------------------------
     # Run the full Stage 2 pipeline
@@ -131,7 +114,6 @@ def main():
         export_csv=True,
         bagua_fuzzy_threshold=0.85,
         bagua_bad_matches=['AREVALO IZQUIERDO MARLO'],
-        norandino_membership_df=norandino_membership_df,
     )
  
     # -----------------------------------------------------------------------

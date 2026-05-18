@@ -124,6 +124,7 @@ def extract_farmer_level_inspections_table(all_farmers_df: pd.DataFrame) -> pd.D
     """
     farmer_inspections_columns = [
         'pd_farmer_id',
+        'national_id',          # primary lookup key in Stage 3 migration
         'inspection_year',
         'product_code',             # FK → lookup_product_types
         'base',
@@ -393,4 +394,3 @@ def extract_plot_level_harvests_table(all_plots_df: pd.DataFrame) -> pd.DataFram
  
     print(f"   ✅ plot_level_harvests: {len(harvests_table)} records")
     return harvests_table
- 

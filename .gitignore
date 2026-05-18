@@ -37,10 +37,9 @@ logs/
 *.xlsx
 *.xls
 *.xlsm
- 
-# Exceptions: small mapping helper files needed for pipeline logic
-!src/kobo_api/data_helpers/extensionists_mapping.csv
-!src/kobo_api/data_helpers/farmers_mapping.csv
+
+#files that include sensitive data    
+src/kobo_api/data_helpers/
  
 # Comparison reference folder (also outside data/ as a safety net)
 mysql_ready_notebook4/
@@ -216,4 +215,9 @@ __marimo__/
 # .vscode/
  
 # Abstra
-.abstra/
+.abstra/Projects.lnk
+Projects.lnk
+temp_check.py
+
+src/cea_api/output/ 
+data/exports/ 

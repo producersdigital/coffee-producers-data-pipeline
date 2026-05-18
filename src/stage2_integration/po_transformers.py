@@ -28,8 +28,8 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
  
- 
 from src.utils.mapping_helpers import map_gender_to_id, map_unit_to_id  # noqa: F401 (re-exported)
+ 
  
 def add_schema_compliance_columns(
     df: pd.DataFrame,
@@ -599,7 +599,9 @@ def create_norandino_farmer_level_dataset(
         'area_total_ha', 'area_cafe', 'area_crecimiento', 'area_otros_cultivos',
         'cosecha_estimado_actual_qq', 'cosecha_real_anterior',
         'latitud', 'longitud', 'altitud', 'fecha_ultimo_control_interno',
-        'numero_parcelas', 'org_code'
+        'numero_parcelas', 'org_code',
+        'inspection_year',   # multi-year: must carry through from Stage 1 PKL
+        'inspeccion_cafe', 'inspeccion_panela', 'inspeccion_cacao',  # crop flags
     ]
     existing_columns = [c for c in farmer_level_columns if c in norandino_inspections_df.columns]
     farmers_df = norandino_inspections_df[existing_columns].copy()
@@ -632,11 +634,15 @@ def create_norandino_farmer_level_dataset(
     }, inplace=True)
  
     farmers_df = add_schema_compliance_columns(farmers_df, org_code='NO', lookup_genders_df=lookup_genders)
-    farmers_df['inspection_year'] = 2024
+    # NOTE: inspection_year is NOT hardcoded — it comes from the PKL (2023, 2024, 2025)
+    # Same pattern as Chirinos multi-year handling
+    if 'inspection_year' not in farmers_df.columns:
+        farmers_df['inspection_year'] = 2024  # fallback if column missing
     farmers_df['product_code']    = 'COFFEE'
     farmers_df['unit_code']       = 'QQ'
  
-    print(f"  Output: {len(farmers_df)} unique farmers")
+    years = sorted(farmers_df['inspection_year'].unique())
+    print(f"  Output: {len(farmers_df)} records across years {years}")
     return farmers_df
  
  
@@ -727,13 +733,16 @@ def create_norandino_plot_level_dataset(
                 'last_internal_control_date':      farmer_row.get('fecha_ultimo_control_interno'),
                 'number_of_plots':                 1,
                 'rehabilitation_area_ha':          0,
+                'inspection_year':                 farmer_row.get('inspection_year', 2024),
             })
  
     plots_df = pd.DataFrame(plot_records)
  
     if len(plots_df) > 0:
         plots_df = add_schema_compliance_columns(plots_df, org_code='NO', lookup_genders_df=lookup_genders)
-        plots_df['inspection_year'] = 2024
+        # inspection_year comes from farmer_row — already set in plot_records dict
+        if 'inspection_year' not in plots_df.columns:
+            plots_df['inspection_year'] = 2024  # fallback
         plots_df['product_code']    = 'COFFEE'
         plots_df['unit_code']       = 'QQ'
  

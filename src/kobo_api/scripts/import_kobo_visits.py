@@ -120,11 +120,50 @@ class KoboImporter:
         """Apply data cleaning transformations."""
         logger.info("Cleaning data...")
 
-        # Clean DNI (already read as string, just strip and handle NaN)
-        df['Insertar No de DNI productor'] = df['Insertar No de DNI productor'].fillna('').str.strip()
+        # Normalize DNI to 8-digit zero-padded string — matches farmers table format
+        df['Insertar No de DNI productor'] = (
+            df['Insertar No de DNI productor']
+            .fillna('')
+            .astype(str)
+            .str.strip()
+            .str.replace(r'\.0$', '', regex=True)   # remove float suffix (3313213.0 → 3313213)
+            .apply(lambda x: x.zfill(8) if x not in ('', 'nan') else '')
+        )
 
-        # Convert tiempo_total to number
+        
+        # Maximum reasonable hours for any time field
+        MAX_HOURS = 24.0
+
+        # Convert tiempo_total to number and cap at MAX_HOURS
         df['tiempo_total'] = pd.to_numeric(df['tiempo_total'], errors='coerce')
+        over_limit = df['tiempo_total'] > MAX_HOURS
+        if over_limit.sum() > 0:
+            logger.warning(
+                f"Capped {over_limit.sum()} out-of-range values in 'tiempo_total' "
+                f"(max was {df['tiempo_total'].max():.1f}h -> set to None)"
+            )
+            df.loc[over_limit, 'tiempo_total'] = None
+
+        # Convert all individual time fields to numeric and cap at MAX_HOURS
+        # Guards against data entry errors (e.g. 999 instead of 0.99)
+        TIME_COLS = [
+            '1.1 Asesoria en la gestión documentaria del SIC y fortalecimiento organizativo',
+            '1.2 Asesoria en acopio y trazabilidad del producto',
+            '1.3 Asistencia técnica a productores en el manejo del cultivo',
+            '1.4 Seguimiento a la cosecha y post cosecha del producto',
+            '1.5 Tiempo de traslado',
+            '1.6 Trabajo de gabinete',
+        ]
+        for col in TIME_COLS:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce')
+                over_limit = df[col] > MAX_HOURS
+                if over_limit.sum() > 0:
+                    logger.warning(
+                        f"Capped {over_limit.sum()} out-of-range values in '{col}' "
+                        f"(max was {df[col].max():.1f}h -> set to None)"
+                    )
+                    df.loc[over_limit, col] = None
 
         # Extract year and month from visit date
         df['Fecha'] = pd.to_datetime(df['Fecha'], errors='coerce')
@@ -270,7 +309,7 @@ class KoboImporter:
         logger.info(f"Inserting {len(self.visits_to_insert)} records...")
 
         insert_query = """
-            INSERT INTO technical_assistance_visits (
+            INSERT IGNORE INTO technical_assistance_visits (
                 kobo_uuid, kobo_submission_id, farmer_id, extensionist_id,
                 visit_date, visit_year, visit_month, producer_name_from_kobo, product_name_raw,
                 advisory_sig_time, advisory_traceability_time, technical_crop_management_time,

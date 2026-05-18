@@ -89,14 +89,72 @@ TRANSACTION_PATHS = {
     'aprocassi': TRANSACTIONS_DIR / 'aprocassi' / 'aprocassi_transactions_clean.pkl',
 }
  
-# Optional membership files (only Norandino has provided this)
 RAW_DIR = PROJECT_ROOT / 'data' / 'raw'
-MEMBERSHIP_PATHS = {
-    # File stored alongside raw inspection files as received from Norandino
-    'norandino': RAW_DIR / 'inspections' / 'norandino' / 'MEMBRESIA COOP NORANDINO 13.10.25.xlsx',
+ 
+# =============================================================================
+# MEMBERSHIP FILE CONFIGURATION
+# =============================================================================
+# Membership files are the AUTHORITATIVE source for farmer identity for POs
+# that provide them. Inspections feed inspection/harvest tables for ALL POs.
+# For POs WITHOUT a membership file (BG, HU, AP), inspections also populate
+# the farmers table.
+#
+# Step 6b applies per configured PO:
+#   A: Update ALL identity fields for inspection farmers already in table
+#   B: Fix 'External' status for farmers confirmed in membership
+#   C: Add new members not yet in the farmers table
+#
+# To add a new PO: copy an entry and fill in the details.
+# =============================================================================
+MEMBERSHIP_CONFIGS = {
+    'norandino': {
+        'path':    RAW_DIR / 'inspections' / 'norandino' / 'Membresia 14.04.26.xlsx',
+        'sheet':   'Hoja1',
+        'header':  7,           # 0-based = Excel row 8
+        'org_code': 'NO',
+        'default_member_status': None,   # use member_status column from file
+        'column_map': {
+            'DNI':                                                   'national_id',
+            'Nombre Productor':                                      'farmer_name',
+            'Teléfono':                                              'telephone',
+            'Sexo':                                                  'gender',
+            'Fecha Nacimiento':                                      'birth_date',
+            'Fecha Incorporación':                                   'entry_date',
+            'Estatus de miembro (hábil, inhábil, pre socio, etc.)': 'member_status',
+            'Distrito':                                              'district',
+            'Provincia':                                             'province',
+            'Departamento':                                          'department',
+        },
+    },
+    'chirinos': {
+        'path':    RAW_DIR / 'inspections' / 'chirinos' / 'Lista de Miembros Comercio Justo - 2026.xlsx',
+        'sheet':   'LISTA COM.JUSTO',
+        'header':  4,           # 0-based = Excel row 5
+        'org_code': 'CH',
+        'default_member_status': 'Hábil',  # all listed are active FT members
+        'column_map': {
+            'Dni Del Productor':            'national_id',
+            'Nombre Del Productor':         'farmer_name',
+            'N°Celular':                    'telephone',
+            'Genero':                       'gender',
+            'Fecha De Nacimiento':          'birth_date',
+            'Fecha De Registro Con La Opp': 'entry_date',
+            'Base':                         'base',
+            'Distrito':                     'district',
+            'Provincia':                    'province',
+            'Caserio':                      'village',
+        },
+    },
+    # Template for future POs (uncomment and fill in):
+    # 'bagua': {
+    #     'path':    RAW_DIR / 'inspections' / 'bagua' / 'FILENAME.xlsx',
+    #     'sheet':   'SHEET_NAME',
+    #     'header':  0,
+    #     'org_code': 'BG',
+    #     'default_member_status': 'Hábil',
+    #     'column_map': { 'DNI': 'national_id', 'Nombre': 'farmer_name', ... },
+    # },
 }
-MEMBERSHIP_SHEET   = {'norandino': 'membresia 2025'}
-MEMBERSHIP_HEADER  = {'norandino': 7}   # row index 7 = Excel row 8 (0-based)
  
 # ---------------------------------------------------------------------------
 # Stage 2 module imports
@@ -491,198 +549,199 @@ def _add_new_farmers_from_transactions(
  
  
  
-def _integrate_norandino_membership(
-    farmers_data_df: pd.DataFrame,
-    membership_df: pd.DataFrame,
+def _load_membership_file(po_key: str) -> 'pd.DataFrame | None':
+    """Load raw Excel membership file for a given PO key.
+    Returns None if file not found or config missing."""
+    config = MEMBERSHIP_CONFIGS.get(po_key)
+    if not config:
+        return None
+    path = config['path']
+    if not path.exists():
+        print(f"  ⚠️  Membership file not found: {path.name}")
+        return None
+    try:
+        df = pd.read_excel(
+            path, sheet_name=config['sheet'],
+            header=config['header'], dtype=str,
+        )
+        print(f"  ✅ Loaded {config['org_code']} membership file: {len(df):,} records")
+        return df
+    except Exception as e:
+        print(f"  ❌ Error loading {config['org_code']} membership file: {e}")
+        return None
+ 
+ 
+def _build_farmers_from_membership(
+    po_key: str,
+    raw_df: pd.DataFrame,
     lookup_genders: pd.DataFrame,
 ) -> pd.DataFrame:
     """
-    Integrate Norandino membership file into farmers_data table.
+    Build a farmers_data-compatible DataFrame from a raw membership file.
  
-    Source file: 'MEMBRESIA COOP NORANDINO 13.10.25.xlsx'
-    Sheet:       'membresia 2025'
-    Header row:  7 (index 6)
- 
-    Columns used from membership file (others are dropped):
-        'Cédula,  Némero o Código del Productor ' → national_id
-        'Nombre Productor '                        → farmer_name
-        'Teléfono'                                 → telephone
-        'Sexo'                                     → gender (mapped to gender_code)
-        'Fecha Nacimiento'                         → birth_date
-        'Fecha Incorporación'                      → entry_date
-        'Estatus de miembro (hábil, inhábil...)'   → member_status
-        'Distrito'                                 → district  (for farmers_addresses)
-        'Provincia'                                → province  (for farmers_addresses)
-        'Departamento'                             → department (for farmers_addresses)
- 
-    Three scenarios handled:
-        B: Farmer already in farmers_data with member_status='External'
-           → Correct status to actual value from membership file
-        C: Member in membership file but not in farmers_data at all
-           → Add as new farmer record (addresses handled in extract_farmer_addresses_table)
+    Membership file is the AUTHORITATIVE source for farmer identity fields.
+    Normalises national_id, maps gender, sets org_code.
  
     Args:
-        farmers_data_df:  Current farmers_data table
-        membership_df:    Raw Norandino membership DataFrame (already loaded from Excel)
+        po_key:        Key into MEMBERSHIP_CONFIGS ('norandino', 'chirinos')
+        raw_df:        Raw DataFrame loaded from Excel
+        lookup_genders: Gender lookup table
+ 
+    Returns:
+        Cleaned DataFrame with standard farmers_data columns.
+    """
+    import unicodedata
+ 
+    def _norm_col(s: str) -> str:
+        return unicodedata.normalize('NFC', str(s).strip())
+ 
+    config = MEMBERSHIP_CONFIGS[po_key]
+    df = raw_df.copy()
+    df.columns = [_norm_col(c) for c in df.columns]
+ 
+    col_map = {_norm_col(k): v for k, v in config['column_map'].items()}
+    existing_map = {k: v for k, v in col_map.items() if k in df.columns}
+    missing = [k for k in col_map if k not in df.columns]
+    if missing:
+        print(f"  ⚠️  Columns not found in {config['org_code']} membership file: {missing}")
+ 
+    if not existing_map:
+        print(f"  ❌ No columns matched — skipping {config['org_code']} membership")
+        return pd.DataFrame()
+ 
+    df = df[list(existing_map.keys())].rename(columns=existing_map)
+ 
+    # Normalise national_id
+    df['national_id'] = (
+        df['national_id'].astype(str).str.strip()
+        .str.replace(r'\.0$', '', regex=True)
+        .str.zfill(8)
+    )
+    df = df[
+        df['national_id'].notna() &
+        ~df['national_id'].isin(['', '00000000', 'nan'])
+    ].drop_duplicates(subset=['national_id'], keep='first').copy()
+ 
+    # Clean name
+    if 'farmer_name' in df.columns:
+        df['farmer_name'] = (
+            df['farmer_name'].astype(str).str.strip().str.upper()
+            .replace('NAN', None)
+        )
+ 
+    # Map gender
+    if 'gender' in df.columns:
+        df['gender_code'] = map_gender_to_id(df['gender'].astype(str), lookup_genders)
+        df.drop(columns=['gender'], inplace=True)
+ 
+    # Default member_status for POs without a status column in their file
+    default_status = config.get('default_member_status')
+    if default_status and 'member_status' not in df.columns:
+        df['member_status'] = default_status
+ 
+    df['org_code']          = config['org_code']
+    df['country_code']      = 'PER'
+    df['pd_farmer_id']      = None
+    df['membership_number'] = None
+    if 'base' not in df.columns:
+        df['base'] = None
+ 
+    print(f"  ✅ {config['org_code']}: {len(df):,} valid farmers from membership file")
+    return df
+ 
+ 
+def _update_farmers_from_membership(
+    farmers_df: pd.DataFrame,
+    membership_built: pd.DataFrame,
+    po_code: str,
+) -> pd.DataFrame:
+    """
+    Integrate a cleaned membership DataFrame into the farmers_data table.
+ 
+    Scenario A: Farmer already in table (from inspections or previous membership)
+                → Update ALL identity fields from membership (authoritative source)
+    Scenario B: Farmer in table as 'External' (came from transactions)
+                → Correct status to actual value from membership file
+    Scenario C: Member in file but not in table at all
+                → Add as new farmer record
+ 
+    Args:
+        farmers_df:       Current farmers_data DataFrame
+        membership_built: Cleaned membership DataFrame
+        po_code:          PO org_code ('NO', 'CH')
  
     Returns:
         Updated farmers_data DataFrame.
     """
-    print(f"  Input: {len(farmers_data_df):,} farmers in table, "
-          f"{len(membership_df):,} Norandino members in file")
+    if membership_built.empty:
+        return farmers_df
  
-    # ------------------------------------------------------------------
-    # Step 1: Normalise column names
-    # Strip whitespace AND normalise unicode (handles accents from Excel)
-    # ------------------------------------------------------------------
-    import unicodedata
+    UPDATE_FIELDS = [
+        'farmer_name', 'telephone', 'gender_code',
+        'birth_date', 'entry_date', 'member_status', 'base',
+    ]
  
-    def _norm_col(s: str) -> str:
-        """Strip whitespace and normalise unicode for column matching."""
-        s = str(s).strip()
-        # Normalise unicode — handles cases where accented chars differ in encoding
-        s = unicodedata.normalize('NFC', s)
-        return s
- 
-    membership_df = membership_df.copy()
-    # Apply normalisation to all column names
-    membership_df.columns = [_norm_col(c) for c in membership_df.columns]
- 
-    # Columns to keep and their target names
-    # Keys are also normalised so they match the normalised column names above
-    COLUMN_MAP = {
-        _norm_col('Cédula,  Némero o Código del Productor'): 'national_id',
-        _norm_col('Nombre Productor'):                        'farmer_name',
-        _norm_col('Teléfono'):                                'telephone',
-        _norm_col('Sexo'):                                    'gender',
-        _norm_col('Fecha Nacimiento'):                        'birth_date',
-        _norm_col('Fecha Incorporación'):                     'entry_date',
-        _norm_col('Estatus de miembro (hábil, inhábil, pre socio, etc.)'): 'member_status',
-        _norm_col('Distrito'):                                'district',
-        _norm_col('Provincia'):                               'province',
-        _norm_col('Departamento'):                            'department',
-    }
- 
-    # Keep only columns we need, rename them
-    existing_map = {k: v for k, v in COLUMN_MAP.items() if k in membership_df.columns}
-    missing = [k for k in COLUMN_MAP if k not in membership_df.columns]
-    if missing:
-        print(f"  ⚠️  These expected membership columns were not found (after normalisation):")
-        for m in missing:
-            print(f"    '{m}'")
-        print(f"  ℹ️  Check the printed column list above and update COLUMN_MAP if needed.")
- 
-    if not existing_map:
-        print("  ❌ No membership columns could be matched — skipping membership integration")
-        return farmers_data_df
- 
-    membership_df = membership_df[list(existing_map.keys())].rename(columns=existing_map)
- 
-    # ------------------------------------------------------------------
-    # Step 2: Clean national_id
-    # ------------------------------------------------------------------
-    membership_df['national_id'] = (
-        membership_df['national_id']
-        .astype(str).str.strip()
-        .str.replace(r'\.0$', '', regex=True)   # remove float .0 suffix if read as numeric
-        .str.zfill(8)
+    existing_po_ids = set(
+        farmers_df[farmers_df['org_code'] == po_code]['national_id'].dropna()
     )
-    # Guard: national_id column must exist after rename
-    if 'national_id' not in membership_df.columns:
-        print("  ❌ national_id column not found after rename — skipping membership integration")
-        return farmers_data_df
  
-    # Drop rows with no usable ID
-    membership_df = membership_df[
-        membership_df['national_id'].notna() &
-        (membership_df['national_id'] != '') &
-        (membership_df['national_id'] != '00000000') &
-        (membership_df['national_id'] != 'nan')
-    ].copy()
+    already_in  = membership_built[membership_built['national_id'].isin(existing_po_ids)]
+    new_members = membership_built[~membership_built['national_id'].isin(existing_po_ids)].copy()
  
-    # Clean farmer_name
-    if 'farmer_name' in membership_df.columns:
-        membership_df['farmer_name'] = (
-            membership_df['farmer_name'].astype(str).str.strip().str.upper()
-        )
+    # Scenario A: update ALL identity fields for existing farmers
+    if len(already_in) > 0:
+        for field in UPDATE_FIELDS:
+            if field in already_in.columns:
+                update_map = dict(zip(already_in['national_id'], already_in[field]))
+                mask = (
+                    (farmers_df['org_code'] == po_code) &
+                    farmers_df['national_id'].isin(update_map)
+                )
+                farmers_df.loc[mask, field] = (
+                    farmers_df.loc[mask, 'national_id'].map(update_map)
+                )
+        print(f"  ✅ Scenario A: {len(already_in):,} existing {po_code} farmers updated "
+              f"(name, gender, telephone, status, dates)")
  
-    # Map gender text → gender_code using the shared lookup table
-    if 'gender' in membership_df.columns:
-        membership_df['gender_code'] = map_gender_to_id(
-            membership_df['gender'].astype(str), lookup_genders
-        )
-        membership_df.drop(columns=['gender'], inplace=True)
- 
-    membership_df['org_code']     = 'NO'
-    membership_df['country_code'] = 'PER'
- 
-    print(f"  Membership file after cleaning: {len(membership_df):,} valid records")
- 
-    # ------------------------------------------------------------------
-    # Step 3: Scenario B — fix 'External' status for known members
-    # farmers_data national_id is already canonical (8-digit string from DNICleaner).
-    # membership_df national_id was normalised to match in Step 2 above.
-    # Do NOT re-normalise farmers_data — it is the authoritative source.
-    # ------------------------------------------------------------------
-    scenario_b_fixed = 0
-    if 'member_status' in membership_df.columns:
-        status_lookup = dict(zip(membership_df['national_id'], membership_df['member_status']))
- 
+    # Scenario B: fix External status for confirmed members
+    if 'member_status' in membership_built.columns:
+        status_map = dict(zip(already_in['national_id'], already_in['member_status']))
         b_mask = (
-            (farmers_data_df['org_code'] == 'NO') &
-            (farmers_data_df['member_status'] == 'External') &
-            farmers_data_df['national_id'].isin(status_lookup)
+            (farmers_df['org_code'] == po_code) &
+            (farmers_df['member_status'] == 'External') &
+            farmers_df['national_id'].isin(status_map)
         )
-        farmers_data_df.loc[b_mask, 'member_status'] = (
-            farmers_data_df.loc[b_mask, 'national_id'].map(status_lookup)
-        )
-        scenario_b_fixed = int(b_mask.sum())
-    print(f"  ✅ Scenario B: {scenario_b_fixed} 'External' statuses corrected")
+        if b_mask.sum() > 0:
+            farmers_df.loc[b_mask, 'member_status'] = (
+                farmers_df.loc[b_mask, 'national_id'].map(status_map)
+            )
+            print(f"  ✅ Scenario B: {int(b_mask.sum())} 'External' statuses corrected")
  
-    # ------------------------------------------------------------------
-    # Step 5: Scenario C — add members not yet in farmers_data at all
-    # ------------------------------------------------------------------
-    existing_no_ids = set(
-        farmers_data_df[farmers_data_df['org_code'] == 'NO']['national_id'].dropna()
-    )
-    new_members = membership_df[
-        ~membership_df['national_id'].isin(existing_no_ids)
-    ].copy()
- 
-    # Deduplicate membership file itself — some files list the same farmer twice
+    # Scenario C: add new members
     before_dedup = len(new_members)
     new_members = new_members.drop_duplicates(subset=['national_id'], keep='first')
     if len(new_members) < before_dedup:
-        print(f"  ℹ️  Removed {before_dedup - len(new_members)} duplicate national_ids from membership file")
- 
-    print(f"  Scenario C: {len(new_members):,} members not yet in farmers_data")
+        print(f"  ℹ️  Removed {before_dedup - len(new_members)} duplicates from membership file")
+    print(f"  Scenario C: {len(new_members):,} new {po_code} members to add")
  
     if len(new_members) > 0:
-        # Columns that belong in farmers_data (not farmers_addresses)
         FARMERS_DATA_COLS = [
             'national_id', 'farmer_name', 'telephone', 'gender_code',
-            'birth_date', 'entry_date', 'member_status',
-            'org_code', 'country_code',
+            'birth_date', 'entry_date', 'member_status', 'base',
+            'org_code', 'country_code', 'pd_farmer_id', 'membership_number',
         ]
         keep = [c for c in FARMERS_DATA_COLS if c in new_members.columns]
         new_records = new_members[keep].copy()
-        new_records['pd_farmer_id']      = None
-        new_records['membership_number'] = None
-        new_records['base']              = None
  
-        # Carry district/province/department so farmers_addresses can use them
-        # (they travel as extra columns — extract_farmer_addresses_table reads them)
-        for addr_col in ['district', 'province', 'department']:
+        for addr_col in ['district', 'province', 'department', 'village']:
             if addr_col in new_members.columns:
                 new_records[addr_col] = new_members[addr_col].values
  
-        farmers_data_df = pd.concat(
-            [farmers_data_df, new_records], ignore_index=True
-        )
-        print(f"  ✅ Scenario C: {len(new_records):,} new Norandino members added")
+        farmers_df = pd.concat([farmers_df, new_records], ignore_index=True)
+        print(f"  ✅ Scenario C: {len(new_records):,} new {po_code} farmers added")
  
-    print(f"  Farmers table after membership integration: {len(farmers_data_df):,} records")
-    return farmers_data_df
+    print(f"  Farmers table after {po_code} integration: {len(farmers_df):,} records")
+    return farmers_df
  
  
 # =============================================================================
@@ -693,7 +752,6 @@ def create_all_mysql_ready_datasets(
     export_csv: bool = True,
     bagua_fuzzy_threshold: float = 0.85,
     bagua_bad_matches: list[str] | None = None,
-    norandino_membership_df: 'pd.DataFrame | None' = None,
 ) -> dict:
     """
     Full Stage 2 pipeline: load → transform → extract → link → export.
@@ -702,11 +760,6 @@ def create_all_mysql_ready_datasets(
         export_csv:                 Save all tables as CSV to data/mysql_ready/ (default True)
         bagua_fuzzy_threshold:      Fuzzy match threshold for Bagua DNI resolution (default 0.85)
         bagua_bad_matches:          Known false-positive names to clear after Bagua fuzzy match
-        norandino_membership_df:    Optional Norandino membership DataFrame. When provided,
-                                    corrects 'External' statuses for known members (Scenario B)
-                                    and adds members with no inspections/transactions (Scenario C).
-                                    Load with: pd.read_excel(MEMBERSHIP_PATHS['norandino'])
-                                    Pass None to skip this step (default).
  
     Returns:
         Dictionary of all MySQL-ready DataFrames:
@@ -876,17 +929,30 @@ def create_all_mysql_ready_datasets(
         )
  
     # -----------------------------------------------------------------------
-    # Step 6b: Integrate Norandino membership file (optional)
-    # Runs BEFORE transaction linking so membership farmers are findable by national_id
+    # Step 6b: Integrate membership files for all configured POs
+    # Membership is the AUTHORITATIVE source for farmer identity.
+    # Runs BEFORE transaction linking so membership farmers are findable.
+    # Scenarios applied per PO:
+    #   A: Update ALL identity fields for inspection farmers already in table
+    #   B: Fix 'External' status for farmers confirmed in membership file
+    #   C: Add new members not yet in table at all
     # -----------------------------------------------------------------------
-    if norandino_membership_df is not None:
-        print("\n── Step 6b: Integrating Norandino membership file ───────────────────")
-        mysql_farmers_data = _integrate_norandino_membership(
-            mysql_farmers_data, norandino_membership_df, lookup_genders
+    print("\n── Step 6b: Integrating membership files ────────────────────────────")
+    membership_loaded = False
+    for po_key, config in MEMBERSHIP_CONFIGS.items():
+        if not config['path'].exists():
+            print(f"  ⏭  No membership file for {config['org_code']} — skipping")
+            continue
+        raw_df = _load_membership_file(po_key)
+        if raw_df is None:
+            continue
+        membership_built = _build_farmers_from_membership(po_key, raw_df, lookup_genders)
+        mysql_farmers_data = _update_farmers_from_membership(
+            mysql_farmers_data, membership_built, config['org_code']
         )
-        print("  ✅ Norandino membership integration complete")
-    else:
-        print("\n── Step 6b: Norandino membership file not provided — skipping ────────")
+        membership_loaded = True
+    if not membership_loaded:
+        print("  ℹ️  No membership files found — farmers built from inspections only")
  
     # -----------------------------------------------------------------------
     # Step 7: Build acopio transactions table
