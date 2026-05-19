@@ -339,7 +339,6 @@ Analysis of gender indicators across cooperatives and their relationship to farm
 
 ## 📞 Contact
 
-**Project Developer**: Daniela  
 **Organization**: Producers Direct  
 📧 [sam@producersdirect.org]  
 🌐 [producersdirect.org](https://producersdirect.org/)  
