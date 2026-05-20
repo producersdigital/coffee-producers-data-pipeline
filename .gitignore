@@ -221,3 +221,4 @@ temp_check.py
 
 src/cea_api/output/ 
 data/exports/ 
+!src/cea_api/data/cea_plot_codes.csv
