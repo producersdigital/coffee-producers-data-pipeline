@@ -266,20 +266,13 @@ streamlit run src/cea_api/scripts/norandino_mapas.py
 
 ## 🗺️ Roadmap
 
-### Phase 2 — Pending
-| Item | Description | Status |
-|------|-------------|--------|
-| **CEA Yield Estimation API** | Coffee + cane yield predictions | Awaiting URL (May 2026+) |
-| **Plot polygons** | EUDR-compliant polygon table from Chirinos + Norandino GPS data | Files received |
-| **EUDR alerts** | EU deforestation monitoring alert migration | 
-
-
 ### Phase 3 — Pending
 | Item | Description | Status |
 |------|-------------|--------|
-| **Training records** | Bagua + Norandino training logs | Files received |
-| **ROTA financial data** | Producers Direct microloan dataset | Awaiting files or create connection to Kobo |
 
+| **Plot polygons** | EUDR-compliant polygon table from Chirinos + Norandino GPS data | Partial Files received |
+| **ROTA financial data** | Producers Direct microloan dataset | Awaiting files or create connection to Kobo |
+| **EUDR** | OSapiens alerts table | Pending migration to SDL |
 ---
 
 ## 🛠️ Technology Stack
@@ -317,16 +310,13 @@ We are actively seeking partnerships with universities and research institutions
 
 ### Priority Research Areas
 
-**1. CEA Predictive Model Validation** ⭐  
-Validate accuracy of CrossEurAsia's soil health, crop health and yield estimation models against actual harvest data from our database. Skills: ML validation, agricultural science, statistical analysis.
-
-**2. EUDR Compliance Analytics**  
+**1. EUDR Compliance Analytics**  
 Develop monitoring tools for EU Deforestation Regulation compliance using plot polygon data and deforestation alert feeds. Skills: GIS, environmental data, Python.
 
-**3. Yield Prediction & Climate Adaptation**  
+**2. Yield Prediction & Climate Adaptation**  
 Time series analysis of productivity trends correlated with altitude, soil health, and climate variables. Skills: ML, time series, agricultural economics.
 
-**4. Gender Equity & Social Impact**  
+**3. Gender Equity & Social Impact**  
 Analysis of gender indicators across cooperatives and their relationship to farm productivity and PO membership benefits. Skills: social science, statistics.
 
 ### What We Provide
