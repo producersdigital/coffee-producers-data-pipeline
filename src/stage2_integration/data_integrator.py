@@ -108,7 +108,7 @@ RAW_DIR = PROJECT_ROOT / 'data' / 'raw'
 # =============================================================================
 MEMBERSHIP_CONFIGS = {
     'norandino': {
-        'path':    RAW_DIR / 'inspections' / 'norandino' / 'Membresia 14.04.26.xlsx',
+        'path':    RAW_DIR / 'inspections' / 'norandino' / 'Membresia 31.08.26.xlsx',
         'sheet':   'Hoja1',
         'header':  7,           # 0-based = Excel row 8
         'org_code': 'NO',

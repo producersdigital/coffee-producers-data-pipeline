@@ -242,6 +242,13 @@ class KoboImporter:
             str(row['visit_month']),                       # visit_month
             str(row.get('nombre_completo', '')),           # producer_name_from_kobo
             str(row.get('Producto', '')),                  # product_name_raw
+            str(row.get('organizacion_primer_nivel', '')), # org_first_level
+            self.safe_numeric(row.get('_Coordenadas_latitude')),   # latitude
+            self.safe_numeric(row.get('_Coordenadas_longitude')),  # longitude
+            str(row.get('distrito', '')),                  # district
+            str(row.get('provincia', '')),                 # province
+            str(row.get('departamento', '')),              # department
+            str(row.get('caserio', '')),                   # village
 
             # Time fields (decimal hours)
             self.safe_numeric(row.get('1.1 Asesoria en la gestión documentaria del SIC y fortalecimiento organizativo')),
@@ -312,6 +319,7 @@ class KoboImporter:
             INSERT IGNORE INTO technical_assistance_visits (
                 kobo_uuid, kobo_submission_id, farmer_id, extensionist_id,
                 visit_date, visit_year, visit_month, producer_name_from_kobo, product_name_raw,
+                org_first_level, latitude, longitude, district, province, department, village,
                 advisory_sig_time, advisory_traceability_time, technical_crop_management_time,
                 harvest_followup_time, travel_time, office_work_time, total_time,
                 activity_description, recommendations, commitments_next_visit,
@@ -325,9 +333,12 @@ class KoboImporter:
                 disease_broca, disease_spider_mite, disease_cercospora, disease_leaf_miners,
                 disease_black_foot, disease_phoma, kobo_submission_time
             ) VALUES (
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
         """
 

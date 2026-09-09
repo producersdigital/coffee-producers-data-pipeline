@@ -45,6 +45,8 @@ import pandas as pd
 from pathlib import Path
  
 from src.database.connection import create_connection
+from src.utils.dni_cleaner import DNICleaner
+_dni_cleaner = DNICleaner(verbose=False)
  
 # ---------------------------------------------------------------------------
 # Paths — relative to project root
@@ -1083,6 +1085,7 @@ def load_transactions() -> bool:
         print(f"    Resuming from row {already_loaded} ({already_loaded} already in DB)")
  
     loaded = no_farmer = no_currency = no_product = skipped = 0
+    
  
     for idx, row in df.iterrows():
         if idx < already_loaded:
@@ -1099,12 +1102,14 @@ def load_transactions() -> bool:
             except Exception as e:
                 print(f"  ❌ Could not reconnect: {e}")
                 return False
+
+        national_id = _dni_cleaner._clean_single_dni(row.get('national_id')) or None
  
         try:
             # 3-step farmer match
             farmer_id = _get_farmer_id(
                 cursor,
-                national_id=_val(row, 'national_id'),
+                national_id=national_id,
                 pd_farmer_id=_val(row, 'pd_farmer_id'),
             )
             if not farmer_id:
@@ -1169,7 +1174,7 @@ def load_transactions() -> bool:
             """, (
                 farmer_id,
                 _date(row, 'transaction_date'), _num(row, 'campaign_year'),
-                _val(row, 'national_id'), _val(row, 'category'),
+                national_id, _val(row, 'category'),
                 product_type_id, unit_id,
                 _num(row, 'local_unit_quantity'), _num(row, 'kg_quantity'),
                 _num(row, 'humidity_percentage'),
@@ -1285,10 +1290,10 @@ def load_all_data(
         # ("Load farmers",              load_farmers,             True),  # done
         # ── Operational ──────────────────────────────────────────────────
         # ("Load farmer addresses",     load_farmer_addresses,    True),  # done
-        ("Load farmer inspections",   load_farmer_inspections,  True),  # done
-        ("Load plot inspections",     load_plot_inspections,    True),
-        ("Load farmer harvests",      load_farmer_harvests,     True),
-        ("Load plot harvests",        load_plot_harvests,       True),
+        # ("Load farmer inspections",   load_farmer_inspections,  True),  # done
+        # ("Load plot inspections",     load_plot_inspections,    True),
+        # ("Load farmer harvests",      load_farmer_harvests,     True),
+        # ("Load plot harvests",        load_plot_harvests,       True),
         # ("Load transactions",         load_transactions,        True),
         # ── Summary ──────────────────────────────────────────────────────
         ("Show results",              show_results,             True),
