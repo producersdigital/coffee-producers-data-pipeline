@@ -496,13 +496,17 @@ def load_farmers() -> bool:
             cursor.execute("""
                 INSERT INTO farmers (
                     org_id, pd_farmer_id, national_id, farmer_name, telephone,
-                    gender_id, birth_date, base, member_status, entry_date, membership_number
+                    gender_id, birth_date, base, org_first_level, org_coordination,
+                    member_status, entry_date, membership_number
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     farmer_name       = COALESCE(VALUES(farmer_name),       farmer_name),
                     telephone         = COALESCE(VALUES(telephone),         telephone),
                     member_status     = COALESCE(VALUES(member_status),     member_status),
+                    base              = COALESCE(VALUES(base),              base),
+                    org_first_level   = COALESCE(VALUES(org_first_level),   org_first_level),
+                    org_coordination  = COALESCE(VALUES(org_coordination),  org_coordination),
                     pd_farmer_id      = COALESCE(pd_farmer_id, VALUES(pd_farmer_id))
             """, (
                 org_id,
@@ -513,6 +517,8 @@ def load_farmers() -> bool:
                 gender_id,
                 _date(row, 'birth_date'),
                 _val(row, 'base'),
+                _val(row, 'org_first_level'),
+                _val(row, 'org_coordination'),
                 _val(row, 'member_status'),
                 _date(row, 'entry_date'),
                 _val(row, 'membership_number'),
@@ -1287,9 +1293,9 @@ def load_all_data(
         # ("Load units",                load_units,               True),
         # ── Master ───────────────────────────────────────────────────────
         # ("Load organizations",        load_organizations,       True),
-        # ("Load farmers",              load_farmers,             True),  # done
+        #  ("Load farmers",              load_farmers,             True),  # done
         # ── Operational ──────────────────────────────────────────────────
-        # ("Load farmer addresses",     load_farmer_addresses,    True),  # done
+        #  ("Load farmer addresses",     load_farmer_addresses,    True),  # done
         # ("Load farmer inspections",   load_farmer_inspections,  True),  # done
         # ("Load plot inspections",     load_plot_inspections,    True),
         # ("Load farmer harvests",      load_farmer_harvests,     True),

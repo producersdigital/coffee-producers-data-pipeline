@@ -121,6 +121,9 @@ MEMBERSHIP_CONFIGS = {
             'Fecha Nacimiento':                                      'birth_date',
             'Fecha Incorporación':                                   'entry_date',
             'Estatus de miembro (hábil, inhábil, pre socio, etc.)': 'member_status',
+            'Organización Primer Nivel':                            'org_first_level',
+            'Órgano de Coordinación':                               'org_coordination',
+            'Base Interna/Appagrop':                                'base',
             'Distrito':                                              'district',
             'Provincia':                                             'province',
             'Departamento':                                          'department',
@@ -628,7 +631,15 @@ def _build_farmers_from_membership(
             df['farmer_name'].astype(str).str.strip().str.upper()
             .replace('NAN', None)
         )
- 
+
+    # Normalize member_status: repair mangled accents (H�bil / Habil -> Hábil, etc.)
+    if 'member_status' in df.columns:
+        s = df['member_status'].astype(str).str.strip()
+        s = s.str.replace(r'(?i)^h.bil$',   'Hábil',   regex=True)   # '.' matches í, ?, �
+        s = s.str.replace(r'(?i)^inh.bil$', 'Inhábil', regex=True)
+        df['member_status'] = s.replace({'nan': None, 'None': None})
+
+    
     # Map gender
     if 'gender' in df.columns:
         df['gender_code'] = map_gender_to_id(df['gender'].astype(str), lookup_genders)
@@ -679,6 +690,7 @@ def _update_farmers_from_membership(
     UPDATE_FIELDS = [
         'farmer_name', 'telephone', 'gender_code',
         'birth_date', 'entry_date', 'member_status', 'base',
+        'org_first_level', 'org_coordination',
     ]
  
     existing_po_ids = set(
@@ -728,6 +740,7 @@ def _update_farmers_from_membership(
         FARMERS_DATA_COLS = [
             'national_id', 'farmer_name', 'telephone', 'gender_code',
             'birth_date', 'entry_date', 'member_status', 'base',
+            'org_first_level', 'org_coordination',
             'org_code', 'country_code', 'pd_farmer_id', 'membership_number',
         ]
         keep = [c for c in FARMERS_DATA_COLS if c in new_members.columns]
