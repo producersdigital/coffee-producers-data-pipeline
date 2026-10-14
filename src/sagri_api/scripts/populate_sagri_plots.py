@@ -1,7 +1,7 @@
 """
 Populate SAGRI Plots Table
 ==========================
-Reads sagri_codes.xlsx and upserts all 2,695 plot records into sagri_plots.
+Reads sagri_codes.xlsx and upserts all plot records into sagri_plots.
  
 For each row:
   - If plot_code already exists → UPDATE national_id, selected_crop, plot_name, farmer_id
@@ -13,9 +13,9 @@ Region is derived from the plot_code prefix:
   NORLAM → NORLAM (Lambayeque)
   NORPIU → NORPIU (Piura)
  
-Usage:
-    python scripts/populate_sagri_plots.py           # preview only
-    python scripts/populate_sagri_plots.py --apply   # apply to DB
+Usage (from the project root):
+    python src/sagri_api/scripts/populate_sagri_plots.py           # preview only
+    python src/sagri_api/scripts/populate_sagri_plots.py --apply   # apply to DB
 """
  
 import sys
@@ -23,20 +23,18 @@ import argparse
 import pandas as pd
 from pathlib import Path
  
-project_root = Path(__file__).parent.parent
+# Project root is FOUR levels up: scripts → sagri_api → src → repo root.
+# (This was .parent.parent, which resolved to src/sagri_api and made the Excel
+# path below point at a folder that does not exist — the script then returned
+# early with "File not found" and never touched the database.)
+project_root = Path(__file__).parent.parent.parent.parent
 sys.path.insert(0, str(project_root))
  
 from src.database.connection import create_connection
+from src.utils.dni_cleaner import DNICleaner
  
 EXCEL_PATH  = project_root / 'data' / 'raw' / 'sagri' / 'sagri_codes.xlsx'
 SHEET_NAME  = 'Sheet1'
- 
- 
-def _norm_id(val) -> str:
-    """Normalise national_id to 8-digit zero-padded string."""
-    if pd.isna(val) or str(val).strip() in ('', 'nan'):
-        return ''
-    return str(val).strip().replace('.0', '').zfill(8)
  
  
 def _derive_region(plot_code: str) -> str:
@@ -59,16 +57,33 @@ def main(apply: bool = False):
     print(f"\n1. Loading {EXCEL_PATH.name}...")
     if not EXCEL_PATH.exists():
         print(f"  ❌ File not found: {EXCEL_PATH}")
-        return
+        print(f"     Expected it at: {EXCEL_PATH.resolve()}")
+        print(f"     Project root resolved to: {project_root.resolve()}")
+        print(f"     Put the workbook there, or correct EXCEL_PATH at the top of this script.")
+        sys.exit(1)
  
     df = pd.read_excel(EXCEL_PATH, sheet_name=SHEET_NAME, dtype=str)
     df.columns = [c.strip().lower().replace(' ', '_') for c in df.columns]
  
-    # Normalise key columns
-    df['sagri_code']    = df['sagri_code'].astype(str).str.strip()
-    df['national_id']   = df['national_id'].apply(_norm_id)
-    df['selected_crop'] = df.get('selected_crop', pd.Series([''] * len(df))).fillna('')
-    df['plot_name']     = df.get('plot_name',     pd.Series([''] * len(df))).fillna('')
+    required = {'sagri_code', 'national_id'}
+    missing = required - set(df.columns)
+    if missing:
+        print(f"  ❌ Missing required column(s): {', '.join(sorted(missing))}")
+        print(f"     Columns found: {', '.join(df.columns)}")
+        sys.exit(1)
+ 
+    # Normalise key columns.
+    # national_id uses the shared DNICleaner (floats, leading apostrophes,
+    # zero-padding to 8) so it matches farmers.national_id exactly — the same
+    # helper every other stage of the pipeline uses.
+    df['sagri_code']  = df['sagri_code'].astype(str).str.strip()
+    df['national_id'] = DNICleaner(verbose=False).clean(df['national_id'],
+                                                        column_name='national_id')
+ 
+    for col in ('selected_crop', 'plot_name'):
+        if col not in df.columns:
+            df[col] = ''
+        df[col] = df[col].fillna('').astype(str).str.strip()
  
     # Drop rows with no plot code
     df = df[df['sagri_code'].notna() & (df['sagri_code'] != '') & (df['sagri_code'] != 'nan')]
@@ -117,10 +132,19 @@ def main(apply: bool = False):
         else:
             to_insert.append((code, nat_id or None, farmer_id, region, crop, plot_name))
  
+    blank_dni = (df['national_id'] == '').sum()
+ 
     print(f"\n  📊 Results:")
     print(f"     Rows to UPDATE (existing codes): {len(to_update):,}")
     print(f"     Rows to INSERT (new codes):      {len(to_insert):,}")
+    print(f"     Rows with a blank national_id:   {blank_dni:,}")
     print(f"     Rows with no farmer match:       {len(no_farmer):,}")
+ 
+    matched = len(df) - blank_dni - len(no_farmer)
+    with_dni = len(df) - blank_dni
+    if with_dni:
+        print(f"     Farmer match rate:               {matched:,}/{with_dni:,} "
+              f"({matched / with_dni * 100:.1f}%)")
  
     if len(no_farmer) > 0:
         print(f"\n  ⚠️  First 5 unmatched national_ids:")
@@ -177,8 +201,13 @@ def main(apply: bool = False):
     conn.commit()
  
     # Final count
-    cursor.execute("SELECT COUNT(*), SUM(farmer_id IS NOT NULL) FROM sagri_plots")
-    total, linked = cursor.fetchone()
+    cursor.execute("""
+        SELECT COUNT(*),
+               SUM(farmer_id   IS NOT NULL),
+               SUM(national_id IS NOT NULL)
+        FROM sagri_plots
+    """)
+    total, linked, with_dni_db = cursor.fetchone()
  
     cursor.close()
     conn.close()
@@ -190,7 +219,8 @@ def main(apply: bool = False):
     print(f"  Inserted new rows:      {inserted:,}")
     print(f"  Errors:                 {errors}")
     print(f"  Total in sagri_plots:   {total:,}")
-    print(f"  Rows linked to farmer:  {linked:,} / {total:,}")
+    print(f"  Rows with national_id:  {with_dni_db or 0:,} / {total:,}")
+    print(f"  Rows linked to farmer:  {linked or 0:,} / {total:,}")
     if errors == 0:
         print(f"  ✅ No errors")
  
@@ -201,3 +231,4 @@ if __name__ == '__main__':
                         help='Apply changes to DB (default: preview only)')
     args = parser.parse_args()
     main(apply=args.apply)
+ 

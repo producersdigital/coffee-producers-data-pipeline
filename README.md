@@ -39,7 +39,7 @@ This project builds a **production-grade data pipeline** that:
 | **Database tables** | 26 normalized MySQL tables |
 | **Geographic coverage** | 5 regions across Peru |
 | **CEA project plots** | 2,640 farmers linked to CEA soil/crop predictions |
-| **SAGRI legacy plots** | 269 plots with Aug-2025 soil nutrient snapshot |
+| **SAGRI legacy plots** | 2,694 SAGRI plots, all linked to farmers |
 | **Extensionists** | 54 registered field technicians |
 | **EUDR deforestation alerts** | 28,895 farm-level alerts (Satelligence, 10 POs) |
 | **EUDR due-diligence assessments** | 14 assessments across 7 POs (Osapiens) |
@@ -277,7 +277,7 @@ trainings modules.
 | `trainings` | 2,520 |
 | `eudr_osapiens_plot_findings` | 1,201 |
 | `sagri_soil_data` | 807 |
-| `sagri_plots` | 269 |
+| `sagri_plots` | 2694 |
 | `eudr_po_compliance` | 72 |
 | `extensionists` | 54 |
 | `eudr_contracts` | 46 |
@@ -299,7 +299,7 @@ Plus five lookup tables (countries, currencies, genders, product types, units).
 ### ✅ SAGRI Legacy Soil Data
 
 - **807 records** in `sagri_soil_data` (269 plots × 3 nutrients for Aug-2025)
-- `sagri_plots` expanded from 269 → 2,695 rows with `farmer_id`, `national_id`, `selected_crop`, `plot_name`
+- `sagri_plots` 2,694 plots, 100% linked to farmers via national_id (including cooperative RUCs).
 
 ### ✅ CrossEurAsia (CEA) Integration
 
