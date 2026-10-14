@@ -277,7 +277,7 @@ trainings modules.
 | `trainings` | 2,520 |
 | `eudr_osapiens_plot_findings` | 1,201 |
 | `sagri_soil_data` | 807 |
-| `sagri_plots` | 2694 |
+| `sagri_plots` | 2,694 |
 | `eudr_po_compliance` | 72 |
 | `extensionists` | 54 |
 | `eudr_contracts` | 46 |
@@ -290,7 +290,7 @@ Plus five lookup tables (countries, currencies, genders, product types, units).
 ### ✅ Kobo API Integration Complete
 
 - **54 extensionists** registered from Norandino field teams
-- **5,668 technical visits** imported (83% of 6,853 total Kobo records)
+- **6,646 technical visits** imported 
 - 1,167 visits blocked by 50 former members not appearing in the farmers table (to ask Norandino)
 - 17 visits blocked by 3 testing extensionists 
 - Duplicate prevention via `kobo_uuid` unique constraint
