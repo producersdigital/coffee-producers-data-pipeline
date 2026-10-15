@@ -107,8 +107,7 @@ the only place that needs to know.
 an upgrade to 8.4. Take a full backup first and schedule it outside working
 hours: Power BI reports and every loader point at this one instance.
 
-Owner: Sam. Decision pending on whether the original consultant performs the
-upgrade.
+Owner: Sam. 
 
 ### 2.2 Taking a backup
 
@@ -653,6 +652,21 @@ treating any of them as a service level promised to a third party.*
 
 **Code**
 
+- **Input paths are not consistent across modules — deliberately deferred.**
+  Most modules read from the central `data/` folder; EUDR reads from
+  `src/eudr/data/` and estimations from `src/estimations/data/`. This is
+  documented in [section 3](#3-where-the-source-files-go) rather than fixed,
+  because consolidating means re-testing five working loaders against the live
+  database for a purely cosmetic gain. **Do it when you are next editing those
+  modules anyway**, not as a standalone change. The edits would be:
+  `EUDR_DATA` in `eudr_loader.py`, `osapiens_loader.py` and
+  `contracts_loader.py`; `RAW_DIR` / `PROCESSED_DIR` in `clean_estimations.py`
+  and `load_estimations.py`. Then move the two folders, update the docstring in
+  `load_estimations.py`, the README line naming `src/eudr/data/`, and this
+  document.
+  **`src/cea_api/data/cea_plot_codes.csv` must not move** — it is the only data
+  file tracked in git, whitelisted in `.gitignore` on purpose, and the Streamlit
+  app deployed on Streamlit Community Cloud reads it from the repository.
 - **`scripts/run_polygons.py` and `scripts/run_trainings.py` are empty files**
   (0 bytes). They imply a runner exists when it does not — write them or delete
   them.
